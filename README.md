@@ -69,6 +69,7 @@ packages/
 
 ### Dashboard
 - Discord OAuth authentication
+- Rotating branded Discord activity presence with live server/member counts
 - Domain navigation shell with responsive sidebar, top context rail, and typed route metadata
 - Guild management with bot status
 - Server settings and configuration pages

@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `GET /api/guilds/:guildId/commands/categories`
   - `PATCH /api/guilds/:guildId/commands/categories/:category/toggle`
   - `PATCH /api/guilds/:guildId/commands/:commandId/toggle`
+- Bot presence rotation module with branded activity templates and live guild/member counters
 
 ### Fixed
 
