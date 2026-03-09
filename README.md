@@ -38,7 +38,10 @@ packages/
 | Infra | Docker (postgres + redis + nginx), Cloudflare Tunnel |
 
 ### Design System
-- Brand colors: Lucky purple + gold token palette.
+- Main colors:
+  - Lucky Purple (primary): `#8b5cf6`
+  - Lucky Gold (accent): `#d4a017`
+- Brand palette: purple-dominant surfaces with gold highlights.
 - Typography:
   - Display: `Sora`
   - Body/UI: `Manrope`
@@ -122,6 +125,8 @@ npm run deploy:homelab
 ```
 
 Triggers the GitHub `Deploy to Homelab` workflow, waits for completion, and shows failed logs.
+
+Vercel note: `vercel.json` runs `npm run db:generate` before `build:shared` and `build:frontend` to ensure Prisma generated client files are present during cloud builds.
 
 ## Environment Variables
 

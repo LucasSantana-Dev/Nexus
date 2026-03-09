@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deploy script now falls back to restarting `lucky-tunnel` directly when compose profile restart is unavailable
 - Frontend theming now maps legacy `lucky-*` classes to the Lucky purple/gold palette
 - Frontend typography now uses Lucky type tokens (`Sora`, `Manrope`, `JetBrains Mono`) instead of the old default stack
+- Vercel build now generates Prisma client before shared/frontend builds to prevent missing generated client errors
 
 ### Changed
 
@@ -34,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/deploy-remote.sh` now targets workflow file `deploy.yml` and waits for the dispatch run more reliably
 - `scripts/deploy-remote.sh` now always prints failed GitHub Actions logs before exiting
 - Added typography specification to Lucky brand docs (`DESIGN_SYSTEM.md` and `BRANDING_GUIDE.md`)
-- Added Lucky production tunnel snippet and `lucky` -> `lucky` zero-downtime migration checklist to Cloudflare/deploy docs
+- Updated Lucky design/branding docs to define purple (`#8b5cf6`) and gold (`#d4a017`) as main brand colors with usage roles
+- Added Lucky production tunnel snippet and `nexus` -> `lucky` zero-downtime migration checklist to Cloudflare/deploy docs
+- Pinned Node engine to `22.x` to avoid unexpected major-version upgrades in CI/Vercel builds
 
 ## [2.5.0] - 2026-03-08
 
