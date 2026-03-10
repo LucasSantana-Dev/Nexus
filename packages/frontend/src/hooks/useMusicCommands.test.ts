@@ -24,7 +24,11 @@ vi.mock('@/services/api', () => ({
 }))
 
 describe('useMusicCommands', () => {
-    const sendCommand = vi.fn((action: () => Promise<unknown>) => action())
+    const sendCommand = vi.fn(
+        async (action: () => Promise<unknown>) => {
+            await action()
+        },
+    )
     const tracks = [
         { id: '1', title: 'A' },
         { id: '2', title: 'B' },
