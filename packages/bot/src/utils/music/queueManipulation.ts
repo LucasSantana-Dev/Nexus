@@ -222,7 +222,7 @@ function normalizeTrackKey(title?: string, author?: string): string {
 function normalizeText(value?: string): string {
     return (value ?? '')
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '')
+        .replaceAll(/[^a-z0-9]+/g, '')
         .trim()
 }
 
@@ -280,11 +280,12 @@ function splitTokens(value: string): string[] {
 }
 
 function markAsAutoplayTrack(track: Track): void {
-    const metadata = ((
-        track as unknown as { metadata?: Record<string, unknown> }
-    ).metadata ?? {}) as Record<string, unknown>
+    const trackWithMetadata = track as unknown as {
+        metadata?: Record<string, unknown>
+    }
+    const metadata = trackWithMetadata.metadata ?? {}
 
-    ;(track as unknown as { metadata?: Record<string, unknown> }).metadata = {
+    trackWithMetadata.metadata = {
         ...metadata,
         isAutoplay: true,
     }
