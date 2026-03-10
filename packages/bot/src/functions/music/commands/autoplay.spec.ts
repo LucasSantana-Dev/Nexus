@@ -59,18 +59,28 @@ function createQueue(repeatMode = QueueRepeatMode.OFF) {
 function createClient({
     directQueue = null,
     cachedQueues = [],
+    includeCache = true,
 }: {
     directQueue?: unknown
     cachedQueues?: unknown[]
+    includeCache?: boolean
 }) {
+    const nodes: {
+        get: () => unknown
+        cache?: { values: () => Iterable<unknown> }
+    } = {
+        get: jest.fn(() => directQueue),
+    }
+
+    if (includeCache) {
+        nodes.cache = {
+            values: jest.fn(() => cachedQueues.values()),
+        }
+    }
+
     return {
         player: {
-            nodes: {
-                get: jest.fn(() => directQueue),
-                cache: {
-                    values: jest.fn(() => cachedQueues.values()),
-                },
-            },
+            nodes,
         },
     } as any
 }
@@ -121,5 +131,120 @@ describe('autoplay command', () => {
         expect(queue.setRepeatMode).toHaveBeenCalledWith(QueueRepeatMode.OFF)
         expect(replenishQueueMock).not.toHaveBeenCalled()
         expect(interactionReplyMock).toHaveBeenCalled()
+    })
+
+    it('returns early when interaction guild id is missing', async () => {
+        const queue = createQueue(QueueRepeatMode.OFF)
+        const client = createClient({
+            directQueue: queue,
+            cachedQueues: [queue],
+        })
+        const interaction = createInteraction(null as unknown as string)
+
+        await autoplayCommand.execute({
+            client,
+            interaction,
+        } as any)
+
+        expect(requireQueueMock).not.toHaveBeenCalled()
+        expect(interactionReplyMock).not.toHaveBeenCalled()
+    })
+
+    it('passes null queue to validator when cache is unavailable', async () => {
+        const client = createClient({
+            directQueue: null,
+            includeCache: false,
+        })
+        const interaction = createInteraction()
+        requireQueueMock.mockResolvedValue(false)
+
+        await autoplayCommand.execute({
+            client,
+            interaction,
+        } as any)
+
+        expect(requireQueueMock).toHaveBeenCalledWith(null, interaction)
+        expect(interactionReplyMock).not.toHaveBeenCalled()
+    })
+
+    it('passes null queue to validator when cache has no matching guild', async () => {
+        const queue = {
+            ...createQueue(QueueRepeatMode.OFF),
+            guild: { id: 'guild-2' },
+        }
+        const client = createClient({
+            directQueue: null,
+            cachedQueues: [queue],
+        })
+        const interaction = createInteraction('guild-1')
+        requireQueueMock.mockResolvedValue(false)
+
+        await autoplayCommand.execute({
+            client,
+            interaction,
+        } as any)
+
+        expect(requireQueueMock).toHaveBeenCalledWith(null, interaction)
+        expect(interactionReplyMock).not.toHaveBeenCalled()
+    })
+
+    it('logs error and still replies when queue replenish fails', async () => {
+        const queue = createQueue(QueueRepeatMode.OFF)
+        const client = createClient({
+            directQueue: queue,
+            cachedQueues: [queue],
+        })
+        const interaction = createInteraction()
+        replenishQueueMock.mockRejectedValue(new Error('replenish failed'))
+
+        await autoplayCommand.execute({
+            client,
+            interaction,
+        } as any)
+
+        expect(queue.setRepeatMode).toHaveBeenCalledWith(
+            QueueRepeatMode.AUTOPLAY,
+        )
+        expect(errorLogMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: 'Error replenishing queue after enabling autoplay:',
+            }),
+        )
+        expect(interactionReplyMock).toHaveBeenCalled()
+    })
+
+    it('uses autoplay error response when execution throws unexpectedly', async () => {
+        const queue = createQueue(QueueRepeatMode.OFF)
+        queue.setRepeatMode.mockImplementation(() => {
+            throw new Error('unexpected')
+        })
+        const client = createClient({
+            directQueue: queue,
+            cachedQueues: [queue],
+        })
+        const interaction = createInteraction()
+
+        await autoplayCommand.execute({
+            client,
+            interaction,
+        } as any)
+
+        expect(errorLogMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: 'Error in autoplay command:',
+            }),
+        )
+        expect(createEmbedMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: 'Error',
+            }),
+        )
+        expect(interactionReplyMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: expect.objectContaining({
+                    ephemeral: true,
+                }),
+            }),
+        )
     })
 })
