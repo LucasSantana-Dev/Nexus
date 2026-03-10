@@ -121,7 +121,8 @@ npm run format          # Prettier
 ```
 
 Backend lint is currently scoped to active quality-gate paths while legacy strict
-rule debt is being tracked separately via `npm run lint:full --workspace=packages/backend`.
+rule debt is tracked in [issue #136](https://github.com/LucasSantana-Dev/Lucky/issues/136)
+and auditable via `npm run lint:full --workspace=packages/backend`.
 
 ### Remote Deploy (No SSH)
 

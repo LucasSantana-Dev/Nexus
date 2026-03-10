@@ -54,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Backend lint scripts now include scoped guardrails for legacy strict-rule debt files and expose `npm run lint:full --workspace=packages/backend` for full debt tracking
+- Backend lint scripts now include scoped guardrails for legacy strict-rule debt files and expose `npm run lint:full --workspace=packages/backend` for full debt tracking (follow-up: #136)
 - Added `WEBAPP_BACKEND_URL` env propagation in Docker compose stacks and updated OAuth setup docs/examples to use API-domain callback URLs in production
 - Added root npm deploy shortcuts: `npm run deploy:remote` and `npm run deploy:homelab`
 - `scripts/deploy-remote.sh` now targets workflow file `deploy.yml` and waits for the dispatch run more reliably
