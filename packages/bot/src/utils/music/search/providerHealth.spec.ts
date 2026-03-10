@@ -1,5 +1,9 @@
 import { describe, expect, it } from '@jest/globals'
-import { ProviderHealthService } from './providerHealth'
+import {
+    ProviderHealthService,
+    providerFromQueryType,
+    providerFromTrack,
+} from './providerHealth'
 
 describe('ProviderHealthService', () => {
     it('marks provider unavailable after consecutive failures', () => {
@@ -55,5 +59,81 @@ describe('ProviderHealthService', () => {
 
         expect(ordered[0]).toBe('youtube')
         expect(ordered).not.toContain('spotify')
+    })
+
+    it('exposes all provider statuses and handles unknown providers safely', () => {
+        const service = new ProviderHealthService({
+            cooldownMs: 1_000,
+            failureThreshold: 1,
+            failurePenalty: 0.3,
+            successBoost: 0.2,
+        })
+
+        service.recordFailure('unknown', 10, 'unknown failure')
+        const status = service.getStatus('unknown')
+        const all = service.getAllStatuses()
+
+        expect(status.lastError).toBe('unknown failure')
+        expect(status.score).toBe(0.7)
+        expect(all.youtube.provider).toBe('youtube')
+        expect(all.deezer.provider).toBe('deezer')
+        expect(all.unknown.provider).toBe('unknown')
+    })
+
+    it('keeps score within [0, 1] boundaries', () => {
+        const service = new ProviderHealthService({
+            cooldownMs: 1_000,
+            failureThreshold: 10,
+            failurePenalty: 0.6,
+            successBoost: 0.8,
+        })
+
+        service.recordFailure('youtube', 10, 'fail-1')
+        service.recordFailure('youtube', 20, 'fail-2')
+        expect(service.getStatus('youtube').score).toBe(0)
+
+        service.recordSuccess('youtube', 30)
+        service.recordSuccess('youtube', 40)
+        expect(service.getStatus('youtube').score).toBe(1)
+    })
+})
+
+describe('provider mappers', () => {
+    it('maps query types to providers', () => {
+        expect(providerFromQueryType('youtubeSearch' as any)).toBe('youtube')
+        expect(providerFromQueryType('spotifySearch' as any)).toBe('spotify')
+        expect(providerFromQueryType('soundcloud' as any)).toBe('soundcloud')
+        expect(providerFromQueryType('deezerSearch' as any)).toBe('deezer')
+        expect(providerFromQueryType(undefined as any)).toBe('unknown')
+    })
+
+    it('maps track source/url to providers', () => {
+        expect(
+            providerFromTrack({
+                source: 'YouTube',
+                url: 'https://youtube.com/watch?v=abc',
+            }),
+        ).toBe('youtube')
+        expect(
+            providerFromTrack({
+                source: 'spotify',
+                url: 'https://spotify.com/track/1',
+            }),
+        ).toBe('spotify')
+        expect(
+            providerFromTrack({
+                source: 'soundcloud',
+                url: 'https://soundcloud.com/track',
+            }),
+        ).toBe('soundcloud')
+        expect(
+            providerFromTrack({
+                source: 'deezer',
+                url: 'https://deezer.com/track/9',
+            }),
+        ).toBe('deezer')
+        expect(providerFromTrack({ source: 'other', url: 'https://x.com' })).toBe(
+            'unknown',
+        )
     })
 })

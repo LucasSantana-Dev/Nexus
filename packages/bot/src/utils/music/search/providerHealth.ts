@@ -130,7 +130,7 @@ export class ProviderHealthService {
 }
 
 export const providerHealthService = new ProviderHealthService({
-    cooldownMs: parseInt(
+    cooldownMs: Number.parseInt(
         process.env.MUSIC_PROVIDER_COOLDOWN_MS ?? '120000',
         10,
     ),
