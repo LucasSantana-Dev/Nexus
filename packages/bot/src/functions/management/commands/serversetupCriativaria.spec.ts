@@ -430,7 +430,9 @@ describe('serversetupCriativaria helpers', () => {
 
         const payload = autoModService.updateSettings.mock.calls[0]?.[1]
         expect(payload?.bannedWords).toContain('discord-gift')
-        expect(payload?.bannedWords).not.toContain('http://discord-gift')
+        expect(
+            payload?.bannedWords.some((word: string) => word.includes('://discord-gift')),
+        ).toBe(false)
     })
 
     it('captures step failures and continues subsequent setup actions', async () => {
