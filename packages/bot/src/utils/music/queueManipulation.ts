@@ -210,13 +210,7 @@ export async function replenishQueue(queue: GuildQueue): Promise<void> {
         )
         const selected = selectDiverseCandidates(candidates, missingTracks)
 
-        addSelectedTracks(
-            queue,
-            selected,
-            excludedUrls,
-            excludedKeys,
-            requestedBy?.id,
-        )
+        addSelectedTracks(queue, selected, excludedUrls, excludedKeys, requestedBy?.id)
 
         if (selected.length === 0) return
 
@@ -541,19 +535,14 @@ function splitTokens(value: string): string[] {
         .filter((token) => token.length > 2)
 }
 
-function markAsAutoplayTrack(
-    track: Track,
-    recommendationReason: string,
-    requestedById?: string,
-): void {
+function markAsAutoplayTrack(track: Track, recommendationReason: string, requestedById?: string): void {
     const trackWithMetadata = track as unknown as {
         metadata?: Record<string, unknown>
     }
     const metadata = trackWithMetadata.metadata ?? {}
-    const existingRequestedById =
-        typeof metadata.requestedById === 'string'
-            ? metadata.requestedById
-            : undefined
+    const existingRequestedById = typeof metadata.requestedById === 'string'
+        ? metadata.requestedById
+        : undefined
 
     trackWithMetadata.metadata = {
         ...metadata,

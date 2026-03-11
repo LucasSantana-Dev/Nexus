@@ -27,18 +27,14 @@ function getLastFmRequesterId(
     queue: GuildQueue,
     track: Track,
 ): string | undefined {
-    const metadata = (track.metadata ?? {}) as { requestedById?: unknown }
-    const queueMetadata = queue.metadata as IQueueMetadata | undefined
-
-    if (track.requestedBy?.id) {
-        return track.requestedBy.id
-    }
-
-    if (typeof metadata.requestedById === 'string') {
-        return metadata.requestedById
-    }
-
-    return queueMetadata?.requestedBy?.id
+    const metadataRequester = (
+        track.metadata as { requestedById?: unknown } | undefined
+    )?.requestedById
+    const queueRequester = (queue.metadata as IQueueMetadata | undefined)
+        ?.requestedBy?.id
+    const fallbackRequester =
+        typeof metadataRequester === 'string' ? metadataRequester : undefined
+    return track.requestedBy?.id ?? fallbackRequester ?? queueRequester
 }
 
 function formatDuration(duration: string) {
