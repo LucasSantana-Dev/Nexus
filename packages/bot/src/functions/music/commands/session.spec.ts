@@ -8,6 +8,7 @@ const saveSnapshotMock = jest.fn()
 const restoreSnapshotMock = jest.fn()
 const createQueueMock = jest.fn()
 const queueConnectMock = jest.fn()
+const resolveGuildQueueMock = jest.fn()
 const warningEmbedMock = jest.fn((title: string, message: string) => ({
     type: 'warning',
     title,
@@ -50,6 +51,10 @@ jest.mock('../../../handlers/queueHandler', () => ({
     queueConnect: (...args: unknown[]) => queueConnectMock(...args),
 }))
 
+jest.mock('../../../utils/music/queueResolver', () => ({
+    resolveGuildQueue: (...args: unknown[]) => resolveGuildQueueMock(...args),
+}))
+
 jest.mock('../../../utils/general/embeds', () => ({
     warningEmbed: (...args: unknown[]) => warningEmbedMock(...args),
     successEmbed: (...args: unknown[]) => successEmbedMock(...args),
@@ -69,11 +74,8 @@ function createInteraction(subcommand: 'save' | 'restore', guildId = 'guild-1') 
 
 function createClient(queue?: unknown) {
     return {
-        player: {
-            nodes: {
-                get: jest.fn(() => queue),
-            },
-        },
+        player: {},
+        __queue: queue,
     } as any
 }
 
@@ -86,6 +88,15 @@ describe('session command', () => {
         restoreSnapshotMock.mockResolvedValue({
             restoredCount: 1,
             sessionSnapshotId: 'snap-1',
+        })
+        resolveGuildQueueMock.mockReturnValue({
+            queue: null,
+            source: 'miss',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 0,
+                cacheSampleKeys: [],
+            },
         })
     })
 
@@ -113,6 +124,15 @@ describe('session command', () => {
     it('warns when snapshot save has no tracks', async () => {
         const queue = { tracks: { size: 1 } }
         saveSnapshotMock.mockResolvedValue(null)
+        resolveGuildQueueMock.mockReturnValue({
+            queue,
+            source: 'nodes.get',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 1,
+                cacheSampleKeys: ['guild-1'],
+            },
+        })
 
         await sessionCommand.execute({
             client: createClient(queue),
@@ -131,6 +151,15 @@ describe('session command', () => {
         saveSnapshotMock.mockResolvedValue({
             sessionSnapshotId: 'snap-2',
             upcomingTracks: [{}, {}],
+        })
+        resolveGuildQueueMock.mockReturnValue({
+            queue,
+            source: 'cache.guild',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 1,
+                cacheSampleKeys: ['guild-1'],
+            },
         })
 
         await sessionCommand.execute({
@@ -208,5 +237,33 @@ describe('session command', () => {
             'Session restored',
             expect.stringContaining('Restored 3 tracks'),
         )
+    })
+
+    it('uses queue resolved from fallback source for save flow', async () => {
+        const queue = { tracks: { size: 2 } }
+        saveSnapshotMock.mockResolvedValue({
+            sessionSnapshotId: 'snap-9',
+            upcomingTracks: [{}],
+        })
+        resolveGuildQueueMock.mockReturnValue({
+            queue,
+            source: 'cache.id',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 2,
+                cacheSampleKeys: ['guild-2', 'guild-1'],
+            },
+        })
+
+        await sessionCommand.execute({
+            client: createClient(undefined),
+            interaction: createInteraction('save'),
+        } as any)
+
+        expect(resolveGuildQueueMock).toHaveBeenCalledWith(
+            expect.anything(),
+            'guild-1',
+        )
+        expect(saveSnapshotMock).toHaveBeenCalledWith(queue)
     })
 })

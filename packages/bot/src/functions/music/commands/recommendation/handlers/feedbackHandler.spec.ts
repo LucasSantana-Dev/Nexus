@@ -19,6 +19,7 @@ const successEmbedMock = jest.fn((title: string, message: string) => ({
 }))
 const buildTrackKeyMock = jest.fn()
 const setFeedbackMock = jest.fn()
+const resolveGuildQueueMock = jest.fn()
 
 jest.mock('../../../../../utils/general/interactionReply', () => ({
     interactionReply: (...args: unknown[]) => interactionReplyMock(...args),
@@ -37,6 +38,10 @@ jest.mock('../../../../../services/musicRecommendation/feedbackService', () => (
     },
 }))
 
+jest.mock('../../../../../utils/music/queueResolver', () => ({
+    resolveGuildQueue: (...args: unknown[]) => resolveGuildQueueMock(...args),
+}))
+
 function createInteraction(guildId: string | null, trackUrl?: string | null) {
     return {
         guildId,
@@ -53,13 +58,8 @@ function createInteraction(guildId: string | null, trackUrl?: string | null) {
 
 function createClient(currentTrack?: unknown) {
     return {
-        player: {
-            nodes: {
-                get: jest.fn(() =>
-                    currentTrack ? { currentTrack } : { currentTrack: null },
-                ),
-            },
-        },
+        player: {},
+        __track: currentTrack,
     } as any
 }
 
@@ -70,6 +70,15 @@ describe('handleFeedback', () => {
             (a: string, b: string) => `${a}::${b}`,
         )
         setFeedbackMock.mockResolvedValue(undefined)
+        resolveGuildQueueMock.mockReturnValue({
+            queue: null,
+            source: 'miss',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 0,
+                cacheSampleKeys: [],
+            },
+        })
     })
 
     it('rejects execution outside guilds', async () => {
@@ -98,6 +107,15 @@ describe('handleFeedback', () => {
             author: 'Artist A',
             url: 'https://example.com/a',
         }
+        resolveGuildQueueMock.mockReturnValue({
+            queue: { currentTrack },
+            source: 'cache.guild',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 1,
+                cacheSampleKeys: ['guild-1'],
+            },
+        })
 
         await handleFeedback(
             createInteraction('guild-1', 'https://example.com/a'),
@@ -123,6 +141,15 @@ describe('handleFeedback', () => {
             author: 'Artist A',
             url: 'https://example.com/a',
         }
+        resolveGuildQueueMock.mockReturnValue({
+            queue: { currentTrack },
+            source: 'cache.id',
+            diagnostics: {
+                guildId: 'guild-1',
+                cacheSize: 1,
+                cacheSampleKeys: ['queue-1'],
+            },
+        })
 
         await handleFeedback(
             createInteraction('guild-1', 'https://example.com/other'),
@@ -134,5 +161,18 @@ describe('handleFeedback', () => {
             'url',
         )
         expect(setFeedbackMock).toHaveBeenCalled()
+    })
+
+    it('passes resolver miss queue to warning branch', async () => {
+        await handleFeedback(createInteraction('guild-1'), createClient())
+
+        expect(resolveGuildQueueMock).toHaveBeenCalledWith(
+            expect.anything(),
+            'guild-1',
+        )
+        expect(warningEmbedMock).toHaveBeenCalledWith(
+            'No Track',
+            'No current track found. Provide `track_url` to leave feedback.',
+        )
     })
 })
