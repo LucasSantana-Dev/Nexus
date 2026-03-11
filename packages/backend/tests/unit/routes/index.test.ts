@@ -158,8 +158,11 @@ describe('setupRoutes', () => {
         const featuresGuardIndex = useCalls.findIndex(
             (call) => call[0] === '/api/guilds/:id/features',
         )
-        const guardCallOrder = app.use.mock.invocationCallOrder[featuresGuardIndex]
+        const rbacGuardCallOrder = app.use.mock.invocationCallOrder[rbacGuardIndex]
+        const featuresGuardCallOrder =
+            app.use.mock.invocationCallOrder[featuresGuardIndex]
         const firstRouteSetupOrder = setupAuthRoutes.mock.invocationCallOrder[0]
-        expect(guardCallOrder).toBeLessThan(firstRouteSetupOrder)
+        expect(rbacGuardCallOrder).toBeLessThan(firstRouteSetupOrder)
+        expect(featuresGuardCallOrder).toBeLessThan(firstRouteSetupOrder)
     })
 })
