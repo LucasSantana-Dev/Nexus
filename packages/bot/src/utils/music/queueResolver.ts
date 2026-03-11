@@ -149,7 +149,8 @@ export function resolveGuildQueue(
         }
     }
 
-    warnLog({
+    const log = diagnostics.cacheSize > 0 ? warnLog : debugLog
+    log({
         message: 'Unable to resolve guild queue',
         data: diagnostics,
     })

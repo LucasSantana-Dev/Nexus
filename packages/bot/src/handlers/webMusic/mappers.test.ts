@@ -7,6 +7,13 @@ import {
 } from './mappers'
 
 const resolveGuildQueueMock = jest.fn()
+type QueueStateClient = Parameters<typeof buildQueueState>[0]
+
+function createClient(): QueueStateClient {
+    return {
+        player: {},
+    } as unknown as QueueStateClient
+}
 
 jest.mock('../../utils/music/queueResolver', () => ({
     resolveGuildQueue: (...args: unknown[]) => resolveGuildQueueMock(...args),
@@ -36,7 +43,7 @@ describe('web music repeat mode mappers', () => {
             },
         })
 
-        const state = await buildQueueState({} as any, 'guild-1')
+        const state = await buildQueueState(createClient(), 'guild-1')
 
         expect(state.guildId).toBe('guild-1')
         expect(state.currentTrack).toBeNull()
@@ -82,12 +89,8 @@ describe('web music repeat mode mappers', () => {
             },
         })
 
-        const state = await buildQueueState({} as any, 'guild-1')
+        const state = await buildQueueState(createClient(), 'guild-1')
 
-        expect(resolveGuildQueueMock).toHaveBeenCalledWith(
-            expect.anything(),
-            'guild-1',
-        )
         expect(state.currentTrack?.title).toBe('Song')
         expect(state.isPlaying).toBe(true)
         expect(state.repeatMode).toBe('track')

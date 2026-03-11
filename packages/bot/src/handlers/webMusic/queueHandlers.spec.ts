@@ -9,6 +9,8 @@ import {
 const publishStateMock = jest.fn()
 const buildQueueStateMock = jest.fn()
 const resolveGuildQueueMock = jest.fn()
+type QueueHandlerClient = Parameters<typeof handleQueueMove>[0]
+type QueueHandlerCommand = Parameters<typeof handleQueueMove>[1]
 
 jest.mock('@lucky/shared/services', () => ({
     musicControlService: {
@@ -26,7 +28,10 @@ jest.mock('../../utils/music/queueResolver', () => ({
 
 type QueueHandlerCase = {
     name: string
-    run: (_client: unknown, _cmd: unknown) => Promise<{
+    run: (
+        _client: QueueHandlerClient,
+        _cmd: QueueHandlerCommand,
+    ) => Promise<{
         success: boolean
         error?: string
     }>
@@ -61,12 +66,23 @@ const missCases: QueueHandlerCase[] = [
     },
 ]
 
-function createCommand(data: Record<string, unknown>) {
+function createCommand(data: Record<string, unknown>): QueueHandlerCommand {
     return {
         id: 'cmd-1',
         guildId: 'guild-1',
+        userId: 'user-1',
+        type: 'queue_clear',
+        timestamp: Date.now(),
         data,
-    } as any
+    }
+}
+
+function createClient(): QueueHandlerClient {
+    return {
+        player: {
+            search: jest.fn(),
+        },
+    } as unknown as QueueHandlerClient
 }
 
 describe('web music queueHandlers queue resolution', () => {
@@ -86,11 +102,7 @@ describe('web music queueHandlers queue resolution', () => {
 
     for (const testCase of missCases) {
         it(`returns queue miss error in ${testCase.name}`, async () => {
-            const client = {
-                player: {
-                    search: jest.fn(),
-                },
-            }
+            const client = createClient()
             const result = await testCase.run(client, createCommand(testCase.data))
 
             expect(resolveGuildQueueMock).toHaveBeenCalledWith(client, 'guild-1')
@@ -118,7 +130,7 @@ describe('web music queueHandlers queue resolution', () => {
         })
 
         const result = await handleQueueClear(
-            { player: { search: jest.fn() } } as any,
+            createClient(),
             createCommand({}),
         )
 

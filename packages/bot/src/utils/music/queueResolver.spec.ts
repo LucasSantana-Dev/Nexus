@@ -156,4 +156,21 @@ describe('queueResolver', () => {
             }),
         )
     })
+
+    it('logs debug on miss when queue cache is empty', () => {
+        const client = createClient({
+            cacheMap: new Map<string, QueueLike>(),
+        })
+
+        const result = resolveGuildQueue(client, 'guild-z')
+
+        expect(result.queue).toBeNull()
+        expect(result.source).toBe('miss')
+        expect(debugLogMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                message: 'Unable to resolve guild queue',
+            }),
+        )
+        expect(warnLogMock).not.toHaveBeenCalled()
+    })
 })

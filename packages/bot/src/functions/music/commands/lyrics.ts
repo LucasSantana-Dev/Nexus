@@ -41,7 +41,19 @@ export default new Command({
         let title = query
 
         if (title === null || title === '') {
-            const { queue } = resolveGuildQueue(client, interaction.guildId ?? '')
+            const guildId = interaction.guildId
+            if (!guildId) {
+                await interactionReply({
+                    interaction,
+                    content: {
+                        content: 'This command can only be used in a server.',
+                        ephemeral: true,
+                    },
+                })
+                return
+            }
+
+            const { queue } = resolveGuildQueue(client, guildId)
             const track = queue?.currentTrack
 
             if (!(await requireCurrentTrack(queue, interaction))) return

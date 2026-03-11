@@ -12,8 +12,10 @@ import skipCommand from './skip'
 import songinfoCommand from './songinfo'
 import stopCommand from './stop'
 import volumeCommand from './volume'
+import type { CommandExecuteParams } from '../../../types/CommandData'
 
 const requireGuildMock = jest.fn()
+const requireVoiceChannelMock = jest.fn()
 const requireQueueMock = jest.fn()
 const requireCurrentTrackMock = jest.fn()
 const requireIsPlayingMock = jest.fn()
@@ -23,6 +25,8 @@ const featureToggleIsEnabledMock = jest.fn()
 
 jest.mock('../../../utils/command/commandValidations', () => ({
     requireGuild: (...args: unknown[]) => requireGuildMock(...args),
+    requireVoiceChannel: (...args: unknown[]) =>
+        requireVoiceChannelMock(...args),
     requireQueue: (...args: unknown[]) => requireQueueMock(...args),
     requireCurrentTrack: (...args: unknown[]) =>
         requireCurrentTrackMock(...args),
@@ -66,6 +70,10 @@ type QueueCase = {
     command: CommandLike
 }
 
+type CommandInteraction = CommandExecuteParams['interaction']
+type CommandClient = CommandExecuteParams['client']
+type InteractionStub = Pick<CommandInteraction, 'guildId' | 'user' | 'options'>
+
 const queueValidationCases: QueueCase[] = [
     { name: 'clear', command: clearCommand },
     { name: 'leave', command: leaveCommand },
@@ -81,13 +89,13 @@ const queueValidationCases: QueueCase[] = [
     { name: 'volume', command: volumeCommand },
 ]
 
-function createClient() {
+function createClient(): CommandClient {
     return {
         player: {},
-    } as any
+    } as unknown as CommandClient
 }
 
-function createInteraction(): any {
+function createInteraction(): InteractionStub {
     return {
         guildId: 'guild-1',
         user: {
@@ -104,10 +112,22 @@ function createInteraction(): any {
     }
 }
 
+function executeWithParams(
+    command: CommandLike,
+    client: CommandClient,
+    interaction: InteractionStub,
+) {
+    return command.execute({
+        client,
+        interaction: interaction as unknown as CommandInteraction,
+    })
+}
+
 describe('music command resolver wiring', () => {
     beforeEach(() => {
         jest.clearAllMocks()
         requireGuildMock.mockResolvedValue(true)
+        requireVoiceChannelMock.mockResolvedValue(true)
         requireQueueMock.mockResolvedValue(false)
         requireCurrentTrackMock.mockResolvedValue(true)
         requireIsPlayingMock.mockResolvedValue(true)
@@ -128,7 +148,7 @@ describe('music command resolver wiring', () => {
             const client = createClient()
             const interaction = createInteraction()
 
-            await testCase.command.execute({ client, interaction } as any)
+            await executeWithParams(testCase.command, client, interaction)
 
             expect(resolveGuildQueueMock).toHaveBeenCalledWith(client, 'guild-1')
             expect(requireQueueMock).toHaveBeenCalledWith(
@@ -139,12 +159,14 @@ describe('music command resolver wiring', () => {
         })
     }
 
-    it('uses resolveGuildQueue in lyrics when current track is required', async () => {
+    it(
+        'calls resolveGuildQueue before requireCurrentTrack when lyrics has no song',
+        async () => {
         const client = createClient()
         const interaction = createInteraction()
         requireCurrentTrackMock.mockResolvedValue(false)
 
-        await lyricsCommand.execute({ client, interaction } as any)
+        await executeWithParams(lyricsCommand, client, interaction)
 
         expect(featureToggleIsEnabledMock).toHaveBeenCalledWith(
             'LYRICS',
@@ -159,5 +181,27 @@ describe('music command resolver wiring', () => {
             interaction,
         )
         expect(interactionReplyMock).not.toHaveBeenCalled()
+        },
+    )
+
+    it('returns early in lyrics when guild id is missing', async () => {
+        const client = createClient()
+        const interaction = {
+            ...createInteraction(),
+            guildId: null,
+        }
+
+        await executeWithParams(lyricsCommand, client, interaction)
+
+        expect(resolveGuildQueueMock).not.toHaveBeenCalled()
+        expect(requireCurrentTrackMock).not.toHaveBeenCalled()
+        expect(interactionReplyMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: expect.objectContaining({
+                    content: 'This command can only be used in a server.',
+                    ephemeral: true,
+                }),
+            }),
+        )
     })
 })

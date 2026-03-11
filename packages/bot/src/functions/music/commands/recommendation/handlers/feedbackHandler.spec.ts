@@ -20,6 +20,8 @@ const successEmbedMock = jest.fn((title: string, message: string) => ({
 const buildTrackKeyMock = jest.fn()
 const setFeedbackMock = jest.fn()
 const resolveGuildQueueMock = jest.fn()
+type FeedbackInteraction = Parameters<typeof handleFeedback>[0]
+type FeedbackClient = Parameters<typeof handleFeedback>[1]
 
 jest.mock('../../../../../utils/general/interactionReply', () => ({
     interactionReply: (...args: unknown[]) => interactionReplyMock(...args),
@@ -53,14 +55,13 @@ function createInteraction(guildId: string | null, trackUrl?: string | null) {
                 return null
             }),
         },
-    } as any
+    } as unknown as FeedbackInteraction
 }
 
-function createClient(currentTrack?: unknown) {
+function createClient() {
     return {
         player: {},
-        __track: currentTrack,
-    } as any
+    } as unknown as FeedbackClient
 }
 
 describe('handleFeedback', () => {
@@ -72,12 +73,6 @@ describe('handleFeedback', () => {
         setFeedbackMock.mockResolvedValue(undefined)
         resolveGuildQueueMock.mockReturnValue({
             queue: null,
-            source: 'miss',
-            diagnostics: {
-                guildId: 'guild-1',
-                cacheSize: 0,
-                cacheSampleKeys: [],
-            },
         })
     })
 
@@ -109,17 +104,11 @@ describe('handleFeedback', () => {
         }
         resolveGuildQueueMock.mockReturnValue({
             queue: { currentTrack },
-            source: 'cache.guild',
-            diagnostics: {
-                guildId: 'guild-1',
-                cacheSize: 1,
-                cacheSampleKeys: ['guild-1'],
-            },
         })
 
         await handleFeedback(
             createInteraction('guild-1', 'https://example.com/a'),
-            createClient(currentTrack),
+            createClient(),
         )
 
         expect(buildTrackKeyMock).toHaveBeenCalledWith('Song A', 'Artist A')
@@ -143,17 +132,11 @@ describe('handleFeedback', () => {
         }
         resolveGuildQueueMock.mockReturnValue({
             queue: { currentTrack },
-            source: 'cache.id',
-            diagnostics: {
-                guildId: 'guild-1',
-                cacheSize: 1,
-                cacheSampleKeys: ['queue-1'],
-            },
         })
 
         await handleFeedback(
             createInteraction('guild-1', 'https://example.com/other'),
-            createClient(currentTrack),
+            createClient(),
         )
 
         expect(buildTrackKeyMock).toHaveBeenCalledWith(

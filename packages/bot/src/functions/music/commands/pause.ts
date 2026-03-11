@@ -2,7 +2,10 @@ import { SlashCommandBuilder } from '@discordjs/builders'
 import Command from '../../../models/Command'
 import { interactionReply } from "../../../utils/general/interactionReply"
 import type { CommandExecuteParams } from "../../../types/CommandData"
-import { requireQueue } from "../../../utils/command/commandValidations"
+import {
+    requireQueue,
+    requireVoiceChannel,
+} from "../../../utils/command/commandValidations"
 import { resolveGuildQueue } from '../../../utils/music/queueResolver'
 
 export default new Command({
@@ -11,6 +14,8 @@ export default new Command({
         .setDescription('⏸️ Pause the current music.'),
     category: 'music',
     execute: async ({ client, interaction }: CommandExecuteParams) => {
+        if (!(await requireVoiceChannel(interaction))) return
+
         const { queue } = resolveGuildQueue(client, interaction.guildId ?? '')
 
         if (!(await requireQueue(queue, interaction))) return
