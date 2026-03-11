@@ -141,6 +141,31 @@ describe('trackNowPlaying', () => {
         )
     })
 
+    it('prefers track requester id over metadata and queue fallback', async () => {
+        isLastFmConfiguredMock.mockReturnValue(true)
+        getSessionKeyForUserMock.mockResolvedValue('session-track')
+
+        const { queue } = createQueue('guild-3b')
+        queue.metadata.requestedBy = { id: 'queue-user' }
+        const track = {
+            title: 'Song C2',
+            author: 'Artist C2',
+            duration: '4:10',
+            requestedBy: { id: 'track-user' },
+            metadata: { requestedById: 'meta-user' },
+        }
+
+        await updateLastFmNowPlaying(queue as any, track as any)
+
+        expect(getSessionKeyForUserMock).toHaveBeenCalledWith('track-user')
+        expect(updateNowPlayingMock).toHaveBeenCalledWith(
+            'Artist C2',
+            'Song C2',
+            undefined,
+            'session-track',
+        )
+    })
+
     it('uses queue requester fallback when scrobbling autoplay tracks', async () => {
         isLastFmConfiguredMock.mockReturnValue(true)
         getSessionKeyForUserMock.mockResolvedValue('session-queue')

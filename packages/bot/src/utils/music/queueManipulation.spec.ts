@@ -257,6 +257,43 @@ describe('queueManipulation.replenishQueue', () => {
             }),
         )
     })
+
+    it('keeps existing candidate requester metadata when no queue requester is present', async () => {
+        const queue = createQueueMock({
+            currentTrack: {
+                title: 'Song A',
+                author: 'Artist A',
+                url: 'https://example.com/a',
+            } as unknown as Track,
+            metadata: {},
+            tracks: {
+                size: 0,
+                toArray: jest.fn().mockReturnValue([]),
+            },
+            player: {
+                search: jest.fn().mockResolvedValue({
+                    tracks: [
+                        {
+                            title: 'Song B',
+                            author: 'Artist B',
+                            url: 'https://example.com/b',
+                            metadata: { requestedById: 'seed-user' },
+                        },
+                    ],
+                }),
+            },
+        })
+
+        await replenishQueue(queue as unknown as GuildQueue)
+
+        expect(queue.addTrack).toHaveBeenCalledWith(
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    requestedById: 'seed-user',
+                }),
+            }),
+        )
+    })
 })
 
 describe('queueManipulation.queueOperations', () => {

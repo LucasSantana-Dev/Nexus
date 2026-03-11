@@ -93,6 +93,7 @@ describe('Last.fm Routes Integration', () => {
         delete process.env.LASTFM_API_KEY
         delete process.env.LASTFM_LINK_SECRET
         delete process.env.WEBAPP_BACKEND_URL
+        delete process.env.WEBAPP_REDIRECT_URI
         delete process.env.WEBAPP_FRONTEND_URL
     })
 
@@ -223,6 +224,23 @@ describe('Last.fm Routes Integration', () => {
             expect(res.headers.location).toContain(
                 encodeURIComponent(
                     `https://api.example.com/api/lastfm/callback?state=${state}`,
+                ),
+            )
+        })
+
+        test('should derive callback origin from WEBAPP_REDIRECT_URI when backend url is unset', async () => {
+            process.env.WEBAPP_REDIRECT_URI =
+                'https://lucky.example.com/api/auth/callback'
+            const state = buildState(DISCORD_ID, LINK_SECRET)
+
+            const res = await request(app)
+                .get('/api/lastfm/connect')
+                .query({ state })
+                .expect(302)
+
+            expect(res.headers.location).toContain(
+                encodeURIComponent(
+                    `https://lucky.example.com/api/lastfm/callback?state=${state}`,
                 ),
             )
         })
