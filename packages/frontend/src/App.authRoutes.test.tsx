@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import App from './App'
 import { useAuthStore } from '@/stores/authStore'
 import { useGuildStore } from '@/stores/guildStore'
+import type { EffectiveAccessMap } from '@/types/rbac'
 
 vi.mock('@/stores/authStore')
 vi.mock('@/stores/guildStore')
@@ -34,8 +35,15 @@ type AuthState = {
 }
 
 type GuildState = {
-    selectedGuild: { id: string; name: string; effectiveAccess?: any } | null
-    memberContext: { effectiveAccess?: any; canManageRbac?: boolean } | null
+    selectedGuild: {
+        id: string
+        name: string
+        effectiveAccess?: EffectiveAccessMap
+    } | null
+    memberContext: {
+        effectiveAccess?: EffectiveAccessMap
+        canManageRbac?: boolean
+    } | null
     memberContextLoading: boolean
 }
 
@@ -60,7 +68,9 @@ function mockAuthStore(overrides: Partial<AuthState> = {}) {
 
 function mockGuildStore(overrides: Partial<GuildState> = {}) {
     const state = { ...defaultGuildState, ...overrides }
-    vi.mocked(useGuildStore).mockImplementation(() => state as any)
+    vi.mocked(useGuildStore).mockImplementation((selector) =>
+        selector ? selector(state as any) : (state as any),
+    )
 }
 
 function renderAt(path: string) {
@@ -133,7 +143,7 @@ describe('App authenticated routing', () => {
         renderAt('/moderation')
 
         await waitFor(() => {
-            expect(document.querySelector('.animate-spin')).not.toBeNull()
+            expect(screen.getByRole('status')).toBeInTheDocument()
         })
         expect(screen.queryByText('Moderation Page')).not.toBeInTheDocument()
         expect(screen.queryByText('Access denied')).not.toBeInTheDocument()

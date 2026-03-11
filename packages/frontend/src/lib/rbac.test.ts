@@ -28,8 +28,11 @@ describe('rbac helpers', () => {
         } as const
 
         expect(hasModuleAccess(undefined, 'overview', 'view')).toBe(false)
+        expect(hasModuleAccess(undefined, 'overview')).toBe(false)
+        expect(hasModuleAccess(access, 'overview')).toBe(true)
         expect(hasModuleAccess(access, 'overview', 'view')).toBe(true)
         expect(hasModuleAccess(access, 'overview', 'manage')).toBe(false)
+        expect(hasModuleAccess(access, 'settings')).toBe(true)
         expect(hasModuleAccess(access, 'settings', 'view')).toBe(true)
         expect(hasModuleAccess(access, 'settings', 'manage')).toBe(true)
     })
@@ -41,6 +44,12 @@ describe('rbac helpers', () => {
             hasAnyAccess({
                 ...createEmptyEffectiveAccess(),
                 music: 'view',
+            }),
+        ).toBe(true)
+        expect(
+            hasAnyAccess({
+                ...createEmptyEffectiveAccess(),
+                music: 'manage',
             }),
         ).toBe(true)
     })
