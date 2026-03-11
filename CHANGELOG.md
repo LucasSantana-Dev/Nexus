@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   callback state can be validated from cookie or query for split-origin setups
 - Autoplay Last.fm scrobbling now falls back to stored requester metadata so
   recommended tracks keep the original requester attribution
+<<<<<<< HEAD
+- Last.fm connect callback URL generation now ignores invalid relative
+  `WEBAPP_BACKEND_URL` values and falls back to the OAuth-derived absolute
+  origin so production links always include an absolute callback URL
 - Guild list/dashboard metrics now return nullable live values from bot/API
   enrichment (no forced `0` fallback when metrics are unavailable)
 - Sidebar profile identity now resolves as `nick > global_name > username`

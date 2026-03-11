@@ -192,7 +192,8 @@ Discord Developer Portal (example: `https://lucky-api.lucassantana.tech/api/auth
 Set `WEBAPP_EXPECTED_CLIENT_ID` to the production Discord app id to make
 `/api/health/auth-config` return `degraded` on credential drift.
 Set `WEBAPP_BACKEND_URL` to your public backend/API origin when you expose API routes
-through a dedicated host.
+through a dedicated host. Use an absolute URL (for example,
+`https://lucky-api.lucassantana.tech`).
 
 Discord Developer Portal URL mapping for this deployment:
 
@@ -224,7 +225,7 @@ See `.env.example` for all available options. Key variables:
 | `WEBAPP_SESSION_SECRET` | No | Session encryption key |
 | `WEBAPP_REDIRECT_URI` | No | Explicit Discord OAuth callback URL (must match Discord app settings) |
 | `WEBAPP_EXPECTED_CLIENT_ID` | No | Expected Discord app client id for `/api/health/auth-config` mismatch detection |
-| `WEBAPP_BACKEND_URL` | No | Public backend/API origin used by backend links that must target the API host |
+| `WEBAPP_BACKEND_URL` | No | Public backend/API origin used by backend links that must target the API host (must be an absolute URL) |
 | `CLIENT_SECRET` | No | Discord OAuth secret (for dashboard) |
 | `SENTRY_DSN` | No | Error tracking |
 
