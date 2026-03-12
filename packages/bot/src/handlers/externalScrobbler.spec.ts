@@ -51,6 +51,45 @@ function createMessage(
     } as unknown as Message
 }
 
+function createHarness(guildId: string): {
+    guild: {
+        id: string
+        members: { cache: Map<string, { voice: { channel: unknown } }> }
+    }
+    handler: (message: Message) => Promise<void>
+} {
+    const listeners = new Map<string, (message: Message) => Promise<void>>()
+    const voiceChannel = createVoiceChannel()
+    const guild = {
+        id: guildId,
+        members: {
+            cache: new Map([['music-bot', { voice: { channel: voiceChannel } }]]),
+        },
+        channels: {
+            cache: {
+                filter: jest.fn(() => new Map([['voice-1', voiceChannel]])),
+            },
+        },
+    }
+
+    const client = {
+        on: jest.fn(
+            (event: string, handler: (message: Message) => Promise<void>) => {
+                listeners.set(event, handler)
+            },
+        ),
+        guilds: { cache: new Map([[guildId, guild]]) },
+    }
+
+    handleExternalScrobbler(client as unknown as never)
+    const handler = listeners.get(Events.MessageCreate)
+    if (!handler) {
+        throw new Error('MessageCreate handler was not registered')
+    }
+
+    return { guild, handler }
+}
+
 describe('externalScrobbler', () => {
     const originalDateNow = Date.now
 
@@ -65,35 +104,9 @@ describe('externalScrobbler', () => {
     })
 
     it('parses now-playing line and updates Last.fm for voice members', async () => {
-        const listeners = new Map<string, (message: Message) => Promise<void>>()
-        const voiceChannel = createVoiceChannel()
-        const guild = {
-            id: 'guild-1',
-            members: {
-                cache: new Map([
-                    ['music-bot', { voice: { channel: voiceChannel } }],
-                ]),
-            },
-            channels: {
-                cache: {
-                    filter: jest.fn(() => new Map([['voice-1', voiceChannel]])),
-                },
-            },
-        }
-        const client = {
-            on: jest.fn((event: string, handler: (message: Message) => Promise<void>) => {
-                listeners.set(event, handler)
-            }),
-            guilds: { cache: new Map([['guild-1', guild]]) },
-        }
+        const { guild, handler } = createHarness('guild-1')
 
-        handleExternalScrobbler(client as unknown as never)
-        const handler = listeners.get(Events.MessageCreate)
-        expect(handler).toBeDefined()
-
-        await handler?.(
-            createMessage('**Now playing: My Song – My Artist**', guild),
-        )
+        await handler(createMessage('**Now playing: My Song – My Artist**', guild))
 
         expect(updateNowPlayingMock).toHaveBeenCalledWith(
             'My Artist',
@@ -111,34 +124,10 @@ describe('externalScrobbler', () => {
             .mockReturnValueOnce(140000)
             .mockReturnValueOnce(140000)
 
-        const listeners = new Map<string, (message: Message) => Promise<void>>()
-        const voiceChannel = createVoiceChannel()
-        const guild = {
-            id: 'guild-2',
-            members: {
-                cache: new Map([
-                    ['music-bot', { voice: { channel: voiceChannel } }],
-                ]),
-            },
-            channels: {
-                cache: {
-                    filter: jest.fn(() => new Map([['voice-2', voiceChannel]])),
-                },
-            },
-        }
-        const client = {
-            on: jest.fn((event: string, handler: (message: Message) => Promise<void>) => {
-                listeners.set(event, handler)
-            }),
-            guilds: { cache: new Map([['guild-2', guild]]) },
-        }
+        const { guild, handler } = createHarness('guild-2')
 
-        handleExternalScrobbler(client as unknown as never)
-        const handler = listeners.get(Events.MessageCreate)
-        expect(handler).toBeDefined()
-
-        await handler?.(createMessage('Now playing: First Song — First Artist', guild))
-        await handler?.(createMessage('Now playing: Second Song - Second Artist', guild))
+        await handler(createMessage('Now playing: First Song — First Artist', guild))
+        await handler(createMessage('Now playing: Second Song - Second Artist', guild))
 
         expect(scrobbleMock).toHaveBeenCalledWith(
             'First Artist',

@@ -16,7 +16,8 @@ describe('lastFmApi', () => {
         process.env.LASTFM_API_KEY = 'api-key'
         process.env.LASTFM_API_SECRET = 'api-secret'
         process.env.LASTFM_SESSION_KEY = 'env-session'
-        ;(global as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+        ;(globalThis as { fetch: typeof fetch }).fetch =
+            fetchMock as unknown as typeof fetch
         fetchMock.mockResolvedValue({
             ok: true,
             json: async () => ({}),
