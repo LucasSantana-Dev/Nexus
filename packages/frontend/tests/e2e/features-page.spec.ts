@@ -191,7 +191,7 @@ test.describe('Features Page', () => {
 
         await navigateToFeatures(page)
 
-        const loadingIndicator = page.getByText('Loading...').first()
+        const loadingIndicator = page.locator('.animate-pulse').first()
         const loadingVisible = await loadingIndicator
             .isVisible({ timeout: 2000 })
             .catch(() => false)
