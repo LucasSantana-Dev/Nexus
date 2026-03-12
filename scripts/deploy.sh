@@ -15,12 +15,17 @@ export COMPOSE_PROJECT_NAME
 log() { echo "$LOG_PREFIX $(date '+%H:%M:%S') $1"; }
 
 resolve_cloudflared_config_dir() {
-    if [ -n "${CLOUDFLARED_CONFIG_DIR:-}" ]; then
+    if [[ -n "${CLOUDFLARED_CONFIG_DIR:-}" ]]; then
         echo "$CLOUDFLARED_CONFIG_DIR"
         return
     fi
 
-    if [ -d "/home/luk-server/.cloudflared" ]; then
+    if [[ -f "$DEPLOY_DIR/cloudflared/config-lucky.yml" ]]; then
+        echo "$DEPLOY_DIR/cloudflared"
+        return
+    fi
+
+    if [[ -d "/home/luk-server/.cloudflared" ]]; then
         echo "/home/luk-server/.cloudflared"
         return
     fi
@@ -29,7 +34,7 @@ resolve_cloudflared_config_dir() {
 }
 
 resolve_compose_workdir() {
-    if [ -n "${COMPOSE_WORKDIR:-}" ]; then
+    if [[ -n "${COMPOSE_WORKDIR:-}" ]]; then
         echo "$COMPOSE_WORKDIR"
         return
     fi
@@ -39,7 +44,7 @@ resolve_compose_workdir() {
         --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' \
         2>/dev/null || true)
 
-    if [ -n "$existing_workdir" ]; then
+    if [[ -n "$existing_workdir" ]]; then
         echo "$existing_workdir"
         return
     fi
@@ -56,7 +61,7 @@ docker_compose() {
 
 notify() {
     local color="$1" title="$2" desc="$3"
-    [ -z "$DISCORD_WEBHOOK" ] && return
+    [[ -z "$DISCORD_WEBHOOK" ]] && return
     local commit_msg commit_sha
     commit_sha=$(git -C "$DEPLOY_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
     commit_msg=$(git -C "$DEPLOY_DIR" log -1 --format='%s' 2>/dev/null || echo "unknown")
@@ -87,7 +92,7 @@ verify_cloudflared_config() {
     local credentials_basename
     local credentials_host_path
 
-    if [ ! -f "$config_path" ]; then
+    if [[ ! -f "$config_path" ]]; then
         log "ERROR: cloudflared config not found at $config_path"
         return 1
     fi
@@ -95,7 +100,7 @@ verify_cloudflared_config() {
     credentials_container_path=$(awk -F': ' \
         '/^credentials-file:/ {print $2}' "$config_path" | tr -d '\r' | tail -1)
 
-    if [ -z "$credentials_container_path" ]; then
+    if [[ -z "$credentials_container_path" ]]; then
         log "ERROR: credentials-file missing in $config_path"
         return 1
     fi
@@ -103,7 +108,7 @@ verify_cloudflared_config() {
     credentials_basename=$(basename "$credentials_container_path")
     credentials_host_path="$config_dir/$credentials_basename"
 
-    if [ ! -f "$credentials_host_path" ]; then
+    if [[ ! -f "$credentials_host_path" ]]; then
         log "ERROR: cloudflared credentials not found at $credentials_host_path"
         log "ERROR: expected by config credentials-file=$credentials_container_path"
         return 1
@@ -126,14 +131,14 @@ require_running_containers() {
         fi
 
         running=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo "false")
-        if [ "$running" != "true" ]; then
+        if [[ "$running" != "true" ]]; then
             not_running+=("$container")
         fi
     done
 
-    if [ "${#missing[@]}" -gt 0 ] || [ "${#not_running[@]}" -gt 0 ]; then
-        [ "${#missing[@]}" -gt 0 ] && log "ERROR: missing containers: ${missing[*]}"
-        [ "${#not_running[@]}" -gt 0 ] && \
+    if [[ "${#missing[@]}" -gt 0 ]] || [[ "${#not_running[@]}" -gt 0 ]]; then
+        [[ "${#missing[@]}" -gt 0 ]] && log "ERROR: missing containers: ${missing[*]}"
+        [[ "${#not_running[@]}" -gt 0 ]] && \
             log "ERROR: containers not running: ${not_running[*]}"
         return 1
     fi
@@ -152,7 +157,7 @@ wait_for_http_ready() {
         http_code=$(echo "$response" | tail -1)
         body=$(echo "$response" | sed '$d')
 
-        if [ "$http_code" = "200" ] && echo "$body" | grep -Eq "$body_pattern"; then
+        if [[ "$http_code" = "200" ]] && echo "$body" | grep -Eq "$body_pattern"; then
             log "$label ready (HTTP 200)"
             return 0
         fi
@@ -177,11 +182,11 @@ acquire_lock() {
     fi
 
     local existing_pid=""
-    if [ -f "$LOCK_PID_FILE" ]; then
+    if [[ -f "$LOCK_PID_FILE" ]]; then
         existing_pid=$(cat "$LOCK_PID_FILE" 2>/dev/null || true)
     fi
 
-    if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
         return 1
     fi
 
@@ -191,12 +196,12 @@ acquire_lock() {
     return 0
 }
 
-if [ -z "$EXPECTED_SECRET" ]; then
+if [[ -z "$EXPECTED_SECRET" ]]; then
     log "ERROR: DEPLOY_WEBHOOK_SECRET not configured"
     exit 1
 fi
 
-if [ "$RECEIVED_SECRET" != "$EXPECTED_SECRET" ]; then
+if [[ "$RECEIVED_SECRET" != "$EXPECTED_SECRET" ]]; then
     log "ERROR: invalid webhook secret"
     exit 1
 fi
@@ -263,7 +268,7 @@ if ! require_running_containers; then
 fi
 
 unhealthy=$(docker_compose ps --format json | grep -c '"unhealthy"' || true)
-if [ "$unhealthy" -gt 0 ]; then
+if [[ "$unhealthy" -gt 0 ]]; then
     log "ERROR: $unhealthy unhealthy container(s)"
     print_targeted_logs
     notify 16711680 "Deploy Failed" "$unhealthy unhealthy container(s)"
