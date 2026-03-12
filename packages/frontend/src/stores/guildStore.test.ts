@@ -187,6 +187,23 @@ describe('guildStore', () => {
             })
         })
 
+        test('should classify forbidden failures', async () => {
+            vi.mocked(api.guilds.list).mockRejectedValue(
+                new ApiError(403, 'Missing required scope'),
+            )
+
+            await useGuildStore.getState().fetchGuilds()
+
+            const state = useGuildStore.getState() as unknown as {
+                guildLoadError?: { kind: string; status?: number }
+            }
+            expect(state.guildLoadError).toEqual({
+                kind: 'forbidden',
+                message: 'Missing required scope',
+                status: 403,
+            })
+        })
+
         test('should classify upstream failures', async () => {
             vi.mocked(api.guilds.list).mockRejectedValue(
                 new ApiError(502, 'Discord API unavailable'),
@@ -202,6 +219,38 @@ describe('guildStore', () => {
                 message: 'Discord API unavailable',
                 status: 502,
             })
+        })
+
+        test('should classify unknown failures as upstream with fallback message', async () => {
+            vi.mocked(api.guilds.list).mockRejectedValue('unexpected')
+
+            await useGuildStore.getState().fetchGuilds()
+
+            const state = useGuildStore.getState() as unknown as {
+                guildLoadError?: { kind: string; status?: number; message: string }
+            }
+            expect(state.guildLoadError).toEqual({
+                kind: 'upstream',
+                message: 'Unable to load servers',
+            })
+        })
+
+        test('should preserve selected guild when still present after refresh', async () => {
+            const selectedGuild = mockGuild({ id: '2', name: 'Selected guild' })
+            useGuildStore.setState({
+                selectedGuild,
+                selectedGuildId: selectedGuild.id,
+            } as never)
+            vi.mocked(api.guilds.list).mockResolvedValue({
+                data: {
+                    guilds: [mockGuild({ id: '1' }), selectedGuild, mockGuild({ id: '3' })],
+                },
+            } as never)
+
+            await useGuildStore.getState().fetchGuilds()
+
+            expect(useGuildStore.getState().selectedGuildId).toBe(selectedGuild.id)
+            expect(useGuildStore.getState().selectedGuild?.name).toBe('Selected guild')
         })
     })
 
@@ -221,6 +270,27 @@ describe('guildStore', () => {
 
             expect(useGuildStore.getState().selectedGuild).toBeNull()
             expect(useGuildStore.getState().selectedGuildId).toBeNull()
+        })
+
+        test('should clear member context and listing/settings when dependent calls fail', async () => {
+            const guild = mockGuild({ id: 'error-guild' })
+            vi.mocked(api.guilds.getMe).mockRejectedValue(new Error('me failed'))
+            vi.mocked(api.guilds.getSettings).mockRejectedValue(
+                new Error('settings failed'),
+            )
+            vi.mocked(api.guilds.getListing).mockRejectedValue(
+                new Error('listing failed'),
+            )
+
+            useGuildStore.getState().selectGuild(guild)
+
+            await vi.waitFor(() => {
+                const state = useGuildStore.getState()
+                expect(state.memberContextLoading).toBe(false)
+                expect(state.memberContext).toBeNull()
+                expect(state.serverSettings).toBeNull()
+                expect(state.serverListing).toBeNull()
+            })
         })
     })
 
@@ -271,6 +341,51 @@ describe('guildStore', () => {
             useGuildStore.getState().setSelectedGuild('unknown')
 
             expect(useGuildStore.getState().selectedGuild).toBeNull()
+        })
+    })
+
+    describe('getSelectedGuild', () => {
+        test('should return currently selected guild', () => {
+            const guild = mockGuild({ id: 'selected' })
+            useGuildStore.setState({ selectedGuild: guild, selectedGuildId: guild.id })
+
+            const selectedGuild = useGuildStore.getState().getSelectedGuild()
+
+            expect(selectedGuild).toEqual(guild)
+        })
+    })
+
+    describe('updateServerListing', () => {
+        test('should merge partial listing', () => {
+            useGuildStore.setState({
+                serverListing: {
+                    listed: false,
+                    description: 'old description',
+                    inviteUrl: 'https://discord.gg/test',
+                    defaultInviteChannel: 'updates',
+                    language: 'en',
+                    categories: ['music'],
+                    tags: ['music'],
+                },
+            })
+
+            useGuildStore.getState().updateServerListing({
+                listed: true,
+                tags: ['music', 'community'],
+            })
+
+            const listing = useGuildStore.getState().serverListing
+            expect(listing?.listed).toBe(true)
+            expect(listing?.tags).toEqual(['music', 'community'])
+            expect(listing?.description).toBe('old description')
+        })
+
+        test('should no-op when listing is null', () => {
+            useGuildStore.setState({ serverListing: null })
+
+            useGuildStore.getState().updateServerListing({ listed: true })
+
+            expect(useGuildStore.getState().serverListing).toBeNull()
         })
     })
 })

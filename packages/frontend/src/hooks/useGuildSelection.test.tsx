@@ -75,4 +75,35 @@ describe('useGuildSelection', () => {
             expect(fetchGuilds).toHaveBeenCalledTimes(2)
         })
     })
+
+    test('auto-selects first guild with bot added when nothing is selected', async () => {
+        guildState.guilds = [
+            { id: '1', botAdded: false },
+            { id: '2', botAdded: true },
+            { id: '3', botAdded: true },
+        ]
+        guildState.selectedGuild = null
+
+        renderHook(() => useGuildSelection())
+
+        await waitFor(() => {
+            expect(selectGuild).toHaveBeenCalledTimes(1)
+            expect(selectGuild).toHaveBeenCalledWith({ id: '2', botAdded: true })
+        })
+    })
+
+    test('does not auto-select when no guild has bot added', async () => {
+        guildState.guilds = [
+            { id: '1', botAdded: false },
+            { id: '2', botAdded: false },
+        ]
+        guildState.selectedGuild = null
+
+        renderHook(() => useGuildSelection())
+
+        await waitFor(() => {
+            expect(fetchGuilds).toHaveBeenCalledTimes(1)
+        })
+        expect(selectGuild).not.toHaveBeenCalled()
+    })
 })

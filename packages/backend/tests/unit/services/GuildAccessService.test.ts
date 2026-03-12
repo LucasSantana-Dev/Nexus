@@ -8,6 +8,13 @@ const mockHasAdminPermission = jest.fn<
     [string | null | undefined, string | null | undefined]
 >()
 
+class MockDiscordApiError extends Error {
+    constructor(public readonly statusCode: number, message = 'Discord API error') {
+        super(message)
+        this.name = 'DiscordApiError'
+    }
+}
+
 const mockHasBotInGuild = jest.fn<Promise<boolean>, [string]>()
 const mockGetGuildMemberContext = jest.fn<
     Promise<{ nickname: string | null; roleIds: string[] }>,
@@ -23,6 +30,7 @@ const mockHasAccess = jest.fn<
 >()
 
 jest.mock('../../../src/services/DiscordOAuthService', () => ({
+    DiscordApiError: MockDiscordApiError,
     discordOAuthService: {
         getUserGuilds: (...args: [string]) => mockGetUserGuilds(...args),
         hasAdminPermission: (
@@ -54,6 +62,7 @@ jest.mock('@lucky/shared/services', () => ({
 }))
 
 import { guildAccessService } from '../../../src/services/GuildAccessService'
+import { DiscordApiError } from '../../../src/services/DiscordOAuthService'
 
 const EMPTY_ACCESS = {
     overview: 'none',
@@ -201,6 +210,131 @@ describe('GuildAccessService', () => {
 
         expect(result.map((guild) => guild.id)).toEqual(['101'])
         expect(mockEnrichGuildsWithBotStatus).toHaveBeenCalledWith([guilds[0]])
+    })
+
+    test('listAuthorizedGuilds maps Discord 401 errors to unauthorized AppError', async () => {
+        mockGetUserGuilds.mockRejectedValue(
+            new DiscordApiError(401, 'invalid token'),
+        )
+
+        await expect(guildAccessService.listAuthorizedGuilds(SESSION)).rejects.toMatchObject({
+            statusCode: 401,
+            message: 'Discord session expired. Please sign in again.',
+        })
+    })
+
+    test('listAuthorizedGuilds maps Discord 403 errors to forbidden AppError', async () => {
+        mockGetUserGuilds.mockRejectedValue({
+            statusCode: 403,
+            message: 'missing scope',
+        })
+
+        await expect(guildAccessService.listAuthorizedGuilds(SESSION)).rejects.toMatchObject({
+            statusCode: 403,
+            message: 'Discord OAuth scope is missing. Re-authenticate and try again.',
+        })
+    })
+
+    test('listAuthorizedGuilds maps Discord upstream failures to 502 AppError', async () => {
+        mockGetUserGuilds.mockRejectedValue({
+            status: 429,
+            message: 'rate limited',
+        })
+
+        await expect(guildAccessService.listAuthorizedGuilds(SESSION)).rejects.toMatchObject({
+            statusCode: 502,
+            message: 'Discord API is temporarily unavailable. Please retry.',
+        })
+    })
+
+    test('listAuthorizedGuilds rethrows unexpected guild-fetch errors', async () => {
+        const unknownError = new Error('boom')
+        mockGetUserGuilds.mockRejectedValue(unknownError)
+
+        await expect(guildAccessService.listAuthorizedGuilds(SESSION)).rejects.toBe(
+            unknownError,
+        )
+    })
+
+    test('listAuthorizedGuilds skips guild when access resolution throws', async () => {
+        const guilds = [makeGuild('101', { owner: true }), makeGuild('202')]
+        const adminAccess = {
+            overview: 'manage',
+            settings: 'manage',
+            moderation: 'manage',
+            automation: 'manage',
+            music: 'manage',
+            integrations: 'manage',
+        }
+
+        mockGetUserGuilds.mockResolvedValue(guilds)
+        mockHasBotInGuild.mockResolvedValue(true)
+        mockResolveEffectiveAccess.mockImplementation(async (guildId: string) => {
+            if (guildId === '202') {
+                throw new Error('policy lookup failed')
+            }
+            return adminAccess
+        })
+
+        const result = await guildAccessService.listAuthorizedGuilds(SESSION)
+
+        expect(result).toHaveLength(1)
+        expect(result[0].id).toBe('101')
+    })
+
+    test('resolveGuildContext falls back to empty member context when guild lookup fails', async () => {
+        const guild = makeGuild('808')
+        const moderationViewAccess = {
+            ...EMPTY_ACCESS,
+            moderation: 'view',
+        }
+
+        mockGetUserGuilds.mockResolvedValue([guild])
+        mockHasBotInGuild.mockResolvedValue(true)
+        mockGetGuildMemberContext.mockRejectedValue(
+            new Error('member context unavailable'),
+        )
+        mockResolveEffectiveAccess.mockImplementation(
+            async (_guildId: string, roleIds: string[]) => {
+                expect(roleIds).toEqual([])
+                return moderationViewAccess
+            },
+        )
+
+        const context = await guildAccessService.resolveGuildContext(
+            SESSION,
+            guild.id,
+        )
+
+        expect(context).toMatchObject({
+            guildId: guild.id,
+            nickname: null,
+            roleIds: [],
+            effectiveAccess: moderationViewAccess,
+        })
+    })
+
+    test('listAuthorizedGuilds throws when enriched guild has no context', async () => {
+        const guild = makeGuild('101', { owner: true })
+        const adminAccess = {
+            overview: 'manage',
+            settings: 'manage',
+            moderation: 'manage',
+            automation: 'manage',
+            music: 'manage',
+            integrations: 'manage',
+        }
+
+        mockGetUserGuilds.mockResolvedValue([guild])
+        mockHasBotInGuild.mockResolvedValue(true)
+        mockResolveEffectiveAccess.mockResolvedValue(adminAccess)
+        mockEnrichGuildsWithBotStatus.mockResolvedValueOnce([
+            { ...guild, id: 'unknown-guild', hasBot: true },
+        ])
+
+        await expect(guildAccessService.listAuthorizedGuilds(SESSION)).rejects.toThrow(
+            'Missing authorized context for guild unknown-guild',
+        )
     })
 
     test('resolveGuildContext returns null when guild is not in user guild list', async () => {
