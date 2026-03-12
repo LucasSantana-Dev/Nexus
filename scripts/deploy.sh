@@ -14,6 +14,20 @@ export COMPOSE_PROJECT_NAME
 
 log() { echo "$LOG_PREFIX $(date '+%H:%M:%S') $1"; }
 
+resolve_cloudflared_config_dir() {
+    if [ -n "${CLOUDFLARED_CONFIG_DIR:-}" ]; then
+        echo "$CLOUDFLARED_CONFIG_DIR"
+        return
+    fi
+
+    if [ -d "/home/luk-server/.cloudflared" ]; then
+        echo "/home/luk-server/.cloudflared"
+        return
+    fi
+
+    echo "${HOME}/.cloudflared"
+}
+
 resolve_compose_workdir() {
     if [ -n "${COMPOSE_WORKDIR:-}" ]; then
         echo "$COMPOSE_WORKDIR"
@@ -64,6 +78,38 @@ notify() {
 print_targeted_logs() {
     log "Collecting backend/nginx/postgres/redis logs..."
     docker_compose logs --tail=80 --no-color backend nginx postgres redis || true
+}
+
+verify_cloudflared_config() {
+    local config_dir="$1"
+    local config_path="$config_dir/config-lucky.yml"
+    local credentials_container_path
+    local credentials_basename
+    local credentials_host_path
+
+    if [ ! -f "$config_path" ]; then
+        log "ERROR: cloudflared config not found at $config_path"
+        return 1
+    fi
+
+    credentials_container_path=$(awk -F': ' \
+        '/^credentials-file:/ {print $2}' "$config_path" | tr -d '\r' | tail -1)
+
+    if [ -z "$credentials_container_path" ]; then
+        log "ERROR: credentials-file missing in $config_path"
+        return 1
+    fi
+
+    credentials_basename=$(basename "$credentials_container_path")
+    credentials_host_path="$config_dir/$credentials_basename"
+
+    if [ ! -f "$credentials_host_path" ]; then
+        log "ERROR: cloudflared credentials not found at $credentials_host_path"
+        log "ERROR: expected by config credentials-file=$credentials_container_path"
+        return 1
+    fi
+
+    log "Cloudflare tunnel config verified at $config_path"
 }
 
 require_running_containers() {
@@ -163,6 +209,10 @@ fi
 trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT
 
 COMPOSE_WORKDIR="$(resolve_compose_workdir)"
+CLOUDFLARED_CONFIG_DIR="$(resolve_cloudflared_config_dir)"
+export CLOUDFLARED_CONFIG_DIR
+
+log "Using CLOUDFLARED_CONFIG_DIR=$CLOUDFLARED_CONFIG_DIR"
 
 cd "$DEPLOY_DIR"
 git config --global --add safe.directory "$DEPLOY_DIR"
@@ -183,6 +233,12 @@ fi
 
 log "Rolling out services..."
 docker_compose up -d --remove-orphans bot backend frontend nginx postgres redis
+
+if ! verify_cloudflared_config "$CLOUDFLARED_CONFIG_DIR"; then
+    print_targeted_logs
+    notify 16711680 "Deploy Failed" "Cloudflare tunnel config is invalid"
+    exit 1
+fi
 
 log "Restarting Cloudflare tunnel..."
 if docker_compose --profile tunnel up -d cloudflared >/dev/null 2>&1; then
