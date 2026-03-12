@@ -108,6 +108,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guild automation API routes now map known precondition failures to actionable
   4xx responses instead of opaque 500s (`manifest missing`, `capture required`,
   `apply lock active`) (PR #171)
+- Guild automation backend apply/reconcile endpoints now execute real Discord
+  and DB mutations through a shared execution pipeline (capture -> plan ->
+  protected-op gate -> execute -> persisted final status)
+- `/api/guilds/:guildId/automation/apply` and `/reconcile` now return explicit
+  infrastructure failures when the distributed lock backend is unavailable
+  (fail-closed contract)
 - Guild automation diff now marks permission-tightening updates as protected
   operations so `allowProtected` gating applies to destructive updates (PR #171)
 - Guild cutover role cleanup now only mutates bots explicitly flagged
@@ -138,6 +144,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   require `view` and mutating requests require `manage`
 - Bot Jest config now maps relative `.js` imports to source modules during test
   execution, matching the ESM build import style
+- Guild automation reconcile now uses ID-first matching with deterministic
+  fallback for roles/channels and persists remapped manifest IDs for future
+  convergent plans
+- Shared guild automation lock flow now uses Redis token-based distributed locks
+  (`SET NX PX` + safe token release) instead of in-memory instance-local locks
+
+## [2.6.12] - 2026-03-12
+
+### Fixed
+
+- Guild automation apply/reconcile APIs now execute real Discord + DB mutations
+  through the backend execution pipeline instead of record-only runs.
+- Guild automation route error mapping now returns explicit responses for lock
+  backend outages (503 fail-closed) and shared preconditions.
+- Shared automation flow now uses typed guild-automation domain errors to keep
+  route/service failure contracts deterministic.
+
+### Changed
+
+- Distributed execution lock is now Redis-backed with tokenized acquire/release
+  semantics and safe-release verification.
+- Reconcile convergence keeps ID-first matching with deterministic fallback and
+  persists remapped manifest IDs for future convergent runs.
+- Bot automation apply helpers were refactored to reduce complexity while
+  preserving module behavior.
+
+### Verification
+
+- `npm run test --workspace=packages/backend -- tests/integration/routes/guildAutomation.test.ts`
+- `npm run type:check --workspace=packages/backend`
+- `npm run test --workspace=packages/bot -- src/functions/management/commands/guildconfig.spec.ts src/utils/guildAutomation/applyPlan.spec.ts src/utils/guildAutomation/captureGuildState.spec.ts`
+- `CI/CD Pipeline` and `SonarCloud Scan` checks passed on PR #179.
 
 ## [2.6.11] - 2026-03-12
 
