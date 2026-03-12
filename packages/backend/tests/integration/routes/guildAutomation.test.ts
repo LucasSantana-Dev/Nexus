@@ -14,6 +14,7 @@ jest.mock('../../../src/services/SessionService', () => ({
 }))
 
 jest.mock('@lucky/shared/services', () => ({
+    __esModule: true,
     guildAutomationService: {
         getManifest: jest.fn(),
         saveManifest: jest.fn(),
@@ -115,6 +116,66 @@ describe('Guild Automation Routes', () => {
                 initiatedBy: MOCK_SESSION_DATA.userId,
                 runType: 'plan',
             },
+        )
+    })
+
+    test('POST plan maps missing manifest precondition to 404', async () => {
+        const mockedService = guildAutomationService as jest.Mocked<
+            typeof guildAutomationService
+        >
+        mockedService.createPlan.mockRejectedValue(
+            new Error('No automation manifest found for this guild'),
+        )
+
+        const response = await request(app)
+            .post('/api/guilds/111111111111111111/automation/plan')
+            .set('Cookie', ['sessionId=valid_session_id'])
+            .send({})
+            .expect(404)
+
+        expect(response.body).toEqual({
+            error: 'Automation manifest not found',
+        })
+    })
+
+    test('POST apply maps capture precondition to 400', async () => {
+        const mockedService = guildAutomationService as jest.Mocked<
+            typeof guildAutomationService
+        >
+        mockedService.createApplyRun.mockRejectedValue(
+            new Error(
+                'No captured guild state available. Run capture before plan/apply.',
+            ),
+        )
+
+        const response = await request(app)
+            .post('/api/guilds/111111111111111111/automation/apply')
+            .set('Cookie', ['sessionId=valid_session_id'])
+            .send({})
+            .expect(400)
+
+        expect(response.body).toEqual({
+            error: 'No captured guild state available. Run capture before plan/apply.',
+        })
+    })
+
+    test('POST plan rejects malformed nested manifest in actualState', async () => {
+        const response = await request(app)
+            .post('/api/guilds/111111111111111111/automation/plan')
+            .set('Cookie', ['sessionId=valid_session_id'])
+            .send({
+                actualState: {
+                    version: 1,
+                    guild: { id: '111111111111111111' },
+                    roles: { roles: 'invalid' },
+                },
+            })
+            .expect(400)
+
+        expect(response.body).toEqual(
+            expect.objectContaining({
+                error: 'Validation failed',
+            }),
         )
     })
 

@@ -105,6 +105,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when no server has Lucky installed, dashboard keeps no selected server and
   shows explicit selection guidance
 - Refs: PR `#169`
+- Guild automation API routes now map known precondition failures to actionable
+  4xx responses instead of opaque 500s (`manifest missing`, `capture required`,
+  `apply lock active`) (PR #171)
+- Guild automation diff now marks permission-tightening updates as protected
+  operations so `allowProtected` gating applies to destructive updates (PR #171)
+- Guild cutover role cleanup now only mutates bots explicitly flagged
+  `retireOnCutover: true`, preventing role removal from unrelated integrations
+  (PR #171)
 
 ### Changed
 

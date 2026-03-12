@@ -312,6 +312,10 @@ Lucky now supports declarative server automation for guild operations:
 - Safe auto-apply for non-destructive changes
 - Protected operations (deletes/permission tightening) require explicit opt-in
 - Native Discord onboarding mapping (`fetchOnboarding`/`editOnboarding`) is first-class
+- Cutover role cleanup targets only external bots explicitly flagged with
+  `retireOnCutover: true` in parity manifest data
+- Automation API precondition failures (`no manifest`, `capture required`,
+  `apply already running`) return actionable 4xx responses
 
 ## Contributing
 

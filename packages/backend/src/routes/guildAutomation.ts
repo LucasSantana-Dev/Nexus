@@ -10,6 +10,11 @@ import {
     validateGuildAutomationManifest,
 } from '@lucky/shared/services'
 
+const MANIFEST_NOT_FOUND_MESSAGE = 'No automation manifest found for this guild'
+const CAPTURE_REQUIRED_MESSAGE =
+    'No captured guild state available. Run capture before plan/apply.'
+const APPLY_LOCKED_MESSAGE = 'Another automation apply operation is already running'
+
 function p(val: string | string[]): string {
     return typeof val === 'string' ? val : val[0]
 }
@@ -20,6 +25,34 @@ function requireUserId(req: AuthenticatedRequest): string {
     }
 
     return req.userId
+}
+
+function mapAutomationServiceError(error: unknown): never {
+    if (error instanceof AppError) {
+        throw error
+    }
+
+    if (error instanceof Error) {
+        if (error.message === MANIFEST_NOT_FOUND_MESSAGE) {
+            throw AppError.notFound('Automation manifest not found')
+        }
+
+        if (error.message === CAPTURE_REQUIRED_MESSAGE) {
+            throw AppError.badRequest(
+                'No captured guild state available. Run capture before plan/apply.',
+            )
+        }
+
+        if (error.message === APPLY_LOCKED_MESSAGE) {
+            throw AppError.badRequest(
+                'Another automation apply operation is already running',
+            )
+        }
+
+        throw error
+    }
+
+    throw new Error('Guild automation request failed')
 }
 
 export function setupGuildAutomationRoutes(app: Express): void {
@@ -93,15 +126,23 @@ export function setupGuildAutomationRoutes(app: Express): void {
         asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
             const guildId = p(req.params.guildId)
             const userId = requireUserId(req)
-            const body = s.guildAutomationRunBody.parse(req.body)
+            const body = req.body as {
+                actualState?: unknown
+            }
             const actualState = body.actualState
                 ? validateGuildAutomationManifest(body.actualState)
                 : undefined
-            const plan = await guildAutomationService.createPlan(guildId, {
-                actualState,
-                initiatedBy: userId,
-                runType: 'plan',
-            })
+
+            let plan
+            try {
+                plan = await guildAutomationService.createPlan(guildId, {
+                    actualState,
+                    initiatedBy: userId,
+                    runType: 'plan',
+                })
+            } catch (error) {
+                mapAutomationServiceError(error)
+            }
 
             res.json(plan)
         }),
@@ -116,16 +157,25 @@ export function setupGuildAutomationRoutes(app: Express): void {
         asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
             const guildId = p(req.params.guildId)
             const userId = requireUserId(req)
-            const body = s.guildAutomationRunBody.parse(req.body)
+            const body = req.body as {
+                actualState?: unknown
+                allowProtected?: boolean
+            }
             const actualState = body.actualState
                 ? validateGuildAutomationManifest(body.actualState)
                 : undefined
-            const result = await guildAutomationService.createApplyRun(guildId, {
-                actualState,
-                initiatedBy: userId,
-                allowProtected: body.allowProtected,
-                runType: 'apply',
-            })
+
+            let result
+            try {
+                result = await guildAutomationService.createApplyRun(guildId, {
+                    actualState,
+                    initiatedBy: userId,
+                    allowProtected: body.allowProtected,
+                    runType: 'apply',
+                })
+            } catch (error) {
+                mapAutomationServiceError(error)
+            }
 
             res.json(result)
         }),
@@ -140,16 +190,25 @@ export function setupGuildAutomationRoutes(app: Express): void {
         asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
             const guildId = p(req.params.guildId)
             const userId = requireUserId(req)
-            const body = s.guildAutomationRunBody.parse(req.body)
+            const body = req.body as {
+                actualState?: unknown
+                allowProtected?: boolean
+            }
             const actualState = body.actualState
                 ? validateGuildAutomationManifest(body.actualState)
                 : undefined
-            const result = await guildAutomationService.createApplyRun(guildId, {
-                actualState,
-                initiatedBy: userId,
-                allowProtected: body.allowProtected,
-                runType: 'reconcile',
-            })
+
+            let result
+            try {
+                result = await guildAutomationService.createApplyRun(guildId, {
+                    actualState,
+                    initiatedBy: userId,
+                    allowProtected: body.allowProtected,
+                    runType: 'reconcile',
+                })
+            } catch (error) {
+                mapAutomationServiceError(error)
+            }
 
             res.json(result)
         }),
@@ -179,11 +238,19 @@ export function setupGuildAutomationRoutes(app: Express): void {
         asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
             const guildId = p(req.params.guildId)
             const userId = requireUserId(req)
-            const body = s.guildAutomationRunBody.parse(req.body)
-            const result = await guildAutomationService.runCutover(guildId, {
-                initiatedBy: userId,
-                completeChecklist: body.completeChecklist,
-            })
+            const body = req.body as {
+                completeChecklist?: boolean
+            }
+
+            let result
+            try {
+                result = await guildAutomationService.runCutover(guildId, {
+                    initiatedBy: userId,
+                    completeChecklist: body.completeChecklist,
+                })
+            } catch (error) {
+                mapAutomationServiceError(error)
+            }
 
             res.json(result)
         }),

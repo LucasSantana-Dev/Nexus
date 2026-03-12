@@ -16,9 +16,6 @@ CREATE TABLE "guild_automation_manifests" (
 CREATE UNIQUE INDEX "guild_automation_manifests_guildId_key"
 ON "guild_automation_manifests"("guildId");
 
-CREATE INDEX "guild_automation_manifests_guildId_idx"
-ON "guild_automation_manifests"("guildId");
-
 CREATE TABLE "guild_automation_runs" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
@@ -42,6 +39,9 @@ CREATE TABLE "guild_automation_runs" (
 CREATE INDEX "guild_automation_runs_guildId_createdAt_idx"
 ON "guild_automation_runs"("guildId", "createdAt");
 
+CREATE INDEX "guild_automation_runs_manifestId_idx"
+ON "guild_automation_runs"("manifestId");
+
 CREATE TABLE "guild_automation_drifts" (
     "id" TEXT NOT NULL,
     "guildId" TEXT NOT NULL,
@@ -59,3 +59,8 @@ ON "guild_automation_drifts"("guildId", "module");
 
 CREATE INDEX "guild_automation_drifts_guildId_idx"
 ON "guild_automation_drifts"("guildId");
+
+ALTER TABLE "guild_automation_runs"
+ADD CONSTRAINT "guild_automation_runs_manifestId_fkey"
+FOREIGN KEY ("manifestId") REFERENCES "guild_automation_manifests"("id")
+ON DELETE SET NULL ON UPDATE CASCADE;

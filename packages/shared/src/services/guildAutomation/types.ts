@@ -1,3 +1,13 @@
+import type { AutoModSettings } from '../AutoModService'
+import type { ModerationSettings } from '../ModerationService'
+
+type AutoModSettingsUpdate = Partial<
+    Omit<AutoModSettings, 'id' | 'guildId' | 'createdAt' | 'updatedAt'>
+>
+type ModerationSettingsUpdate = Partial<
+    Omit<ModerationSettings, 'id' | 'guildId' | 'createdAt' | 'updatedAt'>
+>
+
 export const AUTOMATION_MODULES = [
     'onboarding',
     'roles',
@@ -73,8 +83,8 @@ export interface GuildAutomationOnboarding {
 }
 
 export interface GuildAutomationModeration {
-    automod?: Record<string, unknown>
-    moderationSettings?: Record<string, unknown>
+    automod?: AutoModSettingsUpdate
+    moderationSettings?: ModerationSettingsUpdate
 }
 
 export interface GuildAutomationAutoMessage {
@@ -108,6 +118,7 @@ export interface GuildAutomationParity {
     externalBots?: Array<{
         id: string
         name: string
+        retireOnCutover?: boolean
     }>
     checklist?: GuildAutomationParityChecklistItem[]
     cutoverReady?: boolean

@@ -14,6 +14,7 @@ import {
     type GuildAutomationManifestDocument,
     type GuildAutomationPlan,
 } from '@lucky/shared/services'
+import { errorLog } from '@lucky/shared/utils'
 
 type ApplyResult = {
     appliedModules: string[]
@@ -27,6 +28,9 @@ type ManagedAutoMessage = {
     channelId?: string
     message?: string
 }
+
+type AutoModUpdatePayload = Parameters<typeof autoModService.updateSettings>[1]
+type ModerationUpdatePayload = Parameters<typeof updateModerationSettings>[1]
 
 function toPermissions(value: string | undefined) {
     if (!value) {
@@ -51,6 +55,30 @@ function mapChannelType(type: string): ReconciliableChannelType {
         default:
             return ChannelType.GuildText
     }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function toAutoModUpdatePayload(value: unknown): AutoModUpdatePayload | null {
+    return isObject(value) ? (value as AutoModUpdatePayload) : null
+}
+
+function toModerationUpdatePayload(
+    value: unknown,
+): ModerationUpdatePayload | null {
+    return isObject(value) ? (value as ModerationUpdatePayload) : null
+}
+
+function isExpectedDeleteError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+        return false
+    }
+
+    const status = Reflect.get(error, 'status')
+    const code = Reflect.get(error, 'code')
+    return status === 404 || status === 403 || code === 10003 || code === 50013
 }
 
 function shouldApplyModule(
@@ -182,8 +210,20 @@ async function applyRolesAndChannels(
 
         try {
             await channel.delete('Lucky guild automation protected-delete apply')
-        } catch {
-            continue
+        } catch (error) {
+            if (!isExpectedDeleteError(error)) {
+                throw error
+            }
+
+            errorLog({
+                message: 'Failed to delete channel during guild automation apply',
+                error,
+                data: {
+                    guildId: guild.id,
+                    channelId: channel.id,
+                    channelName: channel.name,
+                },
+            })
         }
     }
 }
@@ -244,17 +284,21 @@ export async function applyAutomationModules(params: {
     }
 
     if (shouldApplyModule(plan, 'moderation', allowProtected)) {
-        if (desired.moderation?.automod) {
+        const automodPayload = toAutoModUpdatePayload(desired.moderation?.automod)
+        if (automodPayload) {
             await autoModService.updateSettings(
                 guild.id,
-                desired.moderation.automod as never,
+                automodPayload,
             )
         }
 
-        if (desired.moderation?.moderationSettings) {
+        const moderationPayload = toModerationUpdatePayload(
+            desired.moderation?.moderationSettings,
+        )
+        if (moderationPayload) {
             await updateModerationSettings(
                 guild.id,
-                desired.moderation.moderationSettings as never,
+                moderationPayload,
             )
         }
 

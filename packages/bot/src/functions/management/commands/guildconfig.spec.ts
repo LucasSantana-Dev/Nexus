@@ -3,6 +3,7 @@ import guildconfigCommand from './guildconfig'
 
 const captureGuildAutomationStateMock = jest.fn()
 const createPlanMock = jest.fn()
+const getManifestMock = jest.fn()
 const getStatusMock = jest.fn()
 const listRunsMock = jest.fn()
 const recordCaptureMock = jest.fn()
@@ -23,6 +24,7 @@ jest.mock('../../../utils/guildAutomation/applyPlan', () => ({
 jest.mock('@lucky/shared/services', () => ({
     guildAutomationService: {
         createPlan: (...args: unknown[]) => createPlanMock(...args),
+        getManifest: (...args: unknown[]) => getManifestMock(...args),
         getStatus: (...args: unknown[]) => getStatusMock(...args),
         listRuns: (...args: unknown[]) => listRunsMock(...args),
         recordCapture: (...args: unknown[]) => recordCaptureMock(...args),
@@ -35,13 +37,41 @@ jest.mock('@lucky/shared/utils', () => ({
     errorLog: jest.fn(),
 }))
 
-function createInteraction(subcommand: string, options: Record<string, unknown> = {}) {
+function createMember(roleIds: string[]) {
+    const remove = jest.fn().mockResolvedValue(undefined)
+
     return {
-        guild: {
-            id: '123456789012345678',
-            name: 'Criativaria',
-            editOnboarding: jest.fn(),
+        roles: {
+            cache: new Map(
+                roleIds.map((roleId) => [
+                    roleId,
+                    {
+                        id: roleId,
+                    },
+                ]),
+            ),
+            remove,
         },
+    }
+}
+
+function createInteraction(
+    subcommand: string,
+    options: Record<string, unknown> = {},
+    guildOverrides: Record<string, unknown> = {},
+) {
+    const guild = {
+        id: '123456789012345678',
+        name: 'Criativaria',
+        editOnboarding: jest.fn(),
+        members: {
+            cache: new Map(),
+        },
+        ...guildOverrides,
+    }
+
+    return {
+        guild,
         client: {
             user: {
                 id: '999999999999999999',
@@ -86,6 +116,7 @@ describe('guildconfig command', () => {
                 },
             },
         })
+        getManifestMock.mockResolvedValue(null)
         getStatusMock.mockResolvedValue({
             manifest: {
                 guildId: '123456789012345678',
@@ -168,5 +199,57 @@ describe('guildconfig command', () => {
                 status: 'completed',
             }),
         )
+    })
+
+    it('marks run as failed when apply throws', async () => {
+        applyAutomationModulesMock.mockRejectedValueOnce(new Error('apply failed'))
+        const interaction = createInteraction('apply', { allow_protected: true })
+
+        await guildconfigCommand.execute({ interaction } as any)
+
+        expect(updateRunStatusMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                runId: 'run-1',
+                status: 'failed',
+                error: 'apply failed',
+            }),
+        )
+    })
+
+    it('cleans roles only for bots flagged to retire on cutover', async () => {
+        const cleanupTarget = createMember(['123456789012345678', 'role-1'])
+        const untouchedBot = createMember(['123456789012345678', 'role-2'])
+
+        const interaction = createInteraction(
+            'cutover',
+            { complete_checklist: true },
+            {
+                members: {
+                    cache: new Map([
+                        ['bot-1', cleanupTarget],
+                        ['bot-2', untouchedBot],
+                    ]),
+                },
+            },
+        )
+
+        getManifestMock.mockResolvedValueOnce({
+            manifest: {
+                parity: {
+                    externalBots: [
+                        { id: 'bot-1', retireOnCutover: true },
+                        { id: 'bot-2', retireOnCutover: false },
+                    ],
+                },
+            },
+        })
+
+        await guildconfigCommand.execute({ interaction } as any)
+
+        expect(cleanupTarget.roles.remove).toHaveBeenCalledWith(
+            ['role-1'],
+            'Lucky cutover removed legacy bot permissions',
+        )
+        expect(untouchedBot.roles.remove).not.toHaveBeenCalled()
     })
 })
