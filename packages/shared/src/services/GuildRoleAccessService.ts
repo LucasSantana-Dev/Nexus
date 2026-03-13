@@ -118,6 +118,15 @@ function toRoleGrant(row: {
 }
 
 class GuildRoleAccessService {
+    private isMissingTableError(error: unknown): boolean {
+        if (typeof error !== 'object' || error === null) {
+            return false
+        }
+
+        const maybePrismaError = error as { code?: unknown }
+        return maybePrismaError.code === 'P2021'
+    }
+
     private async readCached(guildId: string): Promise<RoleGrant[] | null> {
         if (!redisClient.isHealthy()) {
             return null
