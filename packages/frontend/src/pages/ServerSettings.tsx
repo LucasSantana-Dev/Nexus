@@ -294,9 +294,11 @@ export default function ServerSettingsPage() {
     } else if (rbacLoading) {
         rbacContent = (
             <div className='space-y-3'>
-                {Array.from({ length: 3 }).map((_, index) => (
-                    <Skeleton key={index} className='h-12 w-full' />
-                ))}
+                {['rbac-skeleton-1', 'rbac-skeleton-2', 'rbac-skeleton-3'].map(
+                    (skeletonKey) => (
+                        <Skeleton key={skeletonKey} className='h-12 w-full' />
+                    ),
+                )}
             </div>
         )
     } else {

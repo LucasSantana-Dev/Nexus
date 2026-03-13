@@ -45,14 +45,7 @@ export default function TwitchNotificationsPage() {
         [channels],
     )
 
-    const loadNotifications = useCallback(async (targetGuildId?: string) => {
-        const requestGuildId = targetGuildId ?? guildId
-        if (!requestGuildId) {
-            setNotifications([])
-            setIsLoading(false)
-            return
-        }
-
+    const loadNotifications = useCallback(async (requestGuildId: string) => {
         const requestId = notificationsRequestIdRef.current + 1
         notificationsRequestIdRef.current = requestId
         setIsLoading(true)
@@ -82,32 +75,32 @@ export default function TwitchNotificationsPage() {
                 setIsLoading(false)
             }
         }
-    }, [guildId])
+    }, [])
 
-    const loadChannels = useCallback(async () => {
-        if (!guildId) {
-            setChannels([])
-            setChannelsError(null)
-            return
-        }
-
+    const loadChannels = useCallback(async (requestGuildId: string) => {
         const requestId = channelsRequestIdRef.current + 1
         channelsRequestIdRef.current = requestId
         setChannelsError(null)
         try {
-            const res = await api.guilds.getChannels(guildId)
-            if (requestId !== channelsRequestIdRef.current) {
+            const res = await api.guilds.getChannels(requestGuildId)
+            if (
+                requestId !== channelsRequestIdRef.current ||
+                selectedGuildIdRef.current !== requestGuildId
+            ) {
                 return
             }
             setChannels(res.data.channels)
         } catch {
-            if (requestId !== channelsRequestIdRef.current) {
+            if (
+                requestId !== channelsRequestIdRef.current ||
+                selectedGuildIdRef.current !== requestGuildId
+            ) {
                 return
             }
             setChannels([])
             setChannelsError('Failed to load Discord channels')
         }
-    }, [guildId])
+    }, [])
 
     useEffect(() => {
         if (!guildId) {
@@ -117,8 +110,8 @@ export default function TwitchNotificationsPage() {
         }
 
         loadNotifications(guildId).catch(() => {})
-        loadChannels().catch(() => {})
-    }, [loadNotifications, loadChannels])
+        loadChannels(guildId).catch(() => {})
+    }, [guildId, loadNotifications, loadChannels])
 
     const parseTwitchLogin = (value: string): string | null => {
         const normalized = value.trim()

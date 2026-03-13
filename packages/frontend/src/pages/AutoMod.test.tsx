@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import AutoModPage from './AutoMod'
 import { api } from '@/services/api'
+import { ApiError } from '@/services/ApiError'
 import { useGuildStore } from '@/stores/guildStore'
 import type { AutoModSettings } from '@/types'
 
@@ -449,5 +450,118 @@ describe('AutoModPage', () => {
 
         const switches = screen.getAllByRole('switch')
         expect(switches.every((s) => !s.hasAttribute('checked'))).toBe(true)
+    })
+
+    test('applies template and shows success toast', async () => {
+        const user = userEvent.setup()
+        const { toast } = await import('sonner')
+
+        mockGuildStore(mockGuild)
+        vi.mocked(api.automod.getSettings).mockResolvedValue({
+            data: { settings: mockSettings },
+        } as any)
+        vi.mocked(api.automod.listTemplates).mockResolvedValue({
+            data: {
+                templates: [
+                    {
+                        id: 'balanced',
+                        name: 'Balanced',
+                        description: 'Safe defaults',
+                    },
+                ],
+            },
+        } as any)
+        vi.mocked(api.automod.applyTemplate).mockResolvedValue({
+            data: { settings: { ...mockSettings, linksEnabled: true } },
+        } as any)
+
+        renderPage()
+
+        const applyButton = await screen.findByRole('button', {
+            name: 'Apply Balanced template',
+        })
+        await user.click(applyButton)
+
+        await waitFor(() => {
+            expect(api.automod.applyTemplate).toHaveBeenCalledWith(
+                mockGuild.id,
+                'balanced',
+            )
+            expect(toast.success).toHaveBeenCalledWith(
+                'Auto-moderation template applied',
+            )
+        })
+    })
+
+    test('shows API error message when template apply fails with ApiError', async () => {
+        const user = userEvent.setup()
+        const { toast } = await import('sonner')
+
+        mockGuildStore(mockGuild)
+        vi.mocked(api.automod.getSettings).mockResolvedValue({
+            data: { settings: mockSettings },
+        } as any)
+        vi.mocked(api.automod.listTemplates).mockResolvedValue({
+            data: {
+                templates: [
+                    {
+                        id: 'strict',
+                        name: 'Strict',
+                        description: 'Strict defaults',
+                    },
+                ],
+            },
+        } as any)
+        vi.mocked(api.automod.applyTemplate).mockRejectedValue(
+            new ApiError(404, 'Template not found'),
+        )
+
+        renderPage()
+
+        const applyButton = await screen.findByRole('button', {
+            name: 'Apply Strict template',
+        })
+        await user.click(applyButton)
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith('Template not found')
+        })
+    })
+
+    test('shows generic error when template apply fails unexpectedly', async () => {
+        const user = userEvent.setup()
+        const { toast } = await import('sonner')
+
+        mockGuildStore(mockGuild)
+        vi.mocked(api.automod.getSettings).mockResolvedValue({
+            data: { settings: mockSettings },
+        } as any)
+        vi.mocked(api.automod.listTemplates).mockResolvedValue({
+            data: {
+                templates: [
+                    {
+                        id: 'light',
+                        name: 'Light',
+                        description: 'Light defaults',
+                    },
+                ],
+            },
+        } as any)
+        vi.mocked(api.automod.applyTemplate).mockRejectedValue(
+            new Error('boom'),
+        )
+
+        renderPage()
+
+        const applyButton = await screen.findByRole('button', {
+            name: 'Apply Light template',
+        })
+        await user.click(applyButton)
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith(
+                'Failed to apply template',
+            )
+        })
     })
 })

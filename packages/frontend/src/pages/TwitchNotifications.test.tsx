@@ -274,4 +274,79 @@ describe('TwitchNotificationsPage', () => {
 
         expect(api.twitch.remove).toHaveBeenCalledWith('123', 'tw1')
     })
+
+    test('shows validation error for invalid Twitch URL/login', async () => {
+        const user = userEvent.setup()
+        mockGuildSelection(mockGuild)
+        vi.mocked(api.twitch.list).mockResolvedValue({
+            data: { notifications: [] },
+        } as any)
+
+        renderPage()
+
+        await user.click(await screen.findByText('Add'))
+        await user.type(
+            screen.getByPlaceholderText(
+                'Twitch URL or login (e.g. https://twitch.tv/luk)',
+            ),
+            '!!',
+        )
+        await user.click(screen.getByRole('combobox'))
+        await user.click(screen.getByText('#general'))
+        await user.click(screen.getByText('Save'))
+
+        expect(
+            await screen.findByText('Enter a valid Twitch URL or login'),
+        ).toBeInTheDocument()
+    })
+
+    test('shows duplicate error when Twitch user is already configured', async () => {
+        const user = userEvent.setup()
+        mockGuildSelection(mockGuild)
+        vi.mocked(api.twitch.list).mockResolvedValue({
+            data: { notifications: mockNotifications },
+        } as any)
+        vi.mocked(api.twitch.lookupUser).mockResolvedValue({
+            data: {
+                id: 'tw1',
+                login: 'shroud',
+                displayName: 'Shroud',
+            },
+        } as any)
+
+        renderPage()
+
+        await user.click(await screen.findByText('Add'))
+        await user.type(
+            screen.getByPlaceholderText(
+                'Twitch URL or login (e.g. https://twitch.tv/luk)',
+            ),
+            'shroud',
+        )
+        await user.click(screen.getByRole('combobox'))
+        await user.click(screen.getByText('#general'))
+        await user.click(screen.getByText('Save'))
+
+        expect(
+            await screen.findByText('This Twitch channel is already configured'),
+        ).toBeInTheDocument()
+    })
+
+    test('shows channel loading error when Discord channels request fails', async () => {
+        const user = userEvent.setup()
+        mockGuildSelection(mockGuild)
+        vi.mocked(api.twitch.list).mockResolvedValue({
+            data: { notifications: [] },
+        } as any)
+        vi.mocked(api.guilds.getChannels).mockRejectedValue(
+            new Error('channels unavailable'),
+        )
+
+        renderPage()
+        await user.click(await screen.findByText('Add'))
+
+        expect(
+            await screen.findByText('Failed to load Discord channels'),
+        ).toBeInTheDocument()
+    })
 })
