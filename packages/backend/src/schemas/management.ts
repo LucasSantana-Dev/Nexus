@@ -9,6 +9,10 @@ const commandNameParam = guildIdParam.extend({
     name: z.string().min(1).max(32),
 })
 
+const autoModTemplateParam = guildIdParam.extend({
+    templateId: z.string().regex(/^[a-z0-9-]{2,64}$/i, 'Invalid template ID'),
+})
+
 const autoModSettingsBody = z
     .object({
         enabled: z.boolean().optional(),
@@ -76,6 +80,7 @@ const userIdParam = guildIdParam.extend({
 export const managementSchemas = {
     guildIdParam,
     commandNameParam,
+    autoModTemplateParam,
     autoModSettingsBody,
     guildAutomationManifestBody,
     guildAutomationRunBody,

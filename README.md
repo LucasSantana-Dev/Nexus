@@ -114,6 +114,7 @@ packages/
   as `—` instead of `0`
 - Moderation case viewer and settings
 - Auto-mod configuration
+- Auto-mod templates API with curated presets (`balanced`, `strict`, `light`)
 - Server logs with filtering
 - Music player with real-time SSE updates
 - Feature toggle management (Unleash + env var fallback)
@@ -121,12 +122,16 @@ packages/
   `/api/guilds/:guildId/automessages`; legacy
   `/api/guilds/:guildId/auto-messages` is intentionally unsupported, and stale
   guild `/listing` calls were removed from the frontend client/store surface
+- Twitch notifications now accept Twitch URL or login input and resolve Discord
+  channel names in notification rows
 
 ### Backend Quality
 - Zod input validation on all routes
 - Rate limiting (API 100/min, auth 20/15min, write 30/min)
 - Centralized error handling (AppError + asyncHandler + errorHandler)
 - Request logging middleware
+- RBAC storage outages now return explicit `503` API responses when
+  `guild_role_grants` is unavailable
 - Auth readiness health contract at `GET /api/health/auth-config`
   (includes `clientId` and generated `authorizeUrlPreview`, without secrets)
 - Guild automation execution locking is Redis-backed and fail-closed when lock

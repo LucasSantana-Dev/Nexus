@@ -69,6 +69,46 @@ export function setupManagementRoutes(app: Express): void {
     )
 
     app.get(
+        '/api/guilds/:guildId/automod/templates',
+        requireAuth,
+        validateParams(s.guildIdParam),
+        asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+            const templates = await autoModService.listTemplates()
+            res.json({ templates })
+        }),
+    )
+
+    app.post(
+        '/api/guilds/:guildId/automod/templates/:templateId/apply',
+        requireAuth,
+        writeLimiter,
+        validateParams(s.autoModTemplateParam),
+        asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+            const guildId = p(req.params.guildId)
+            const templateId = p(req.params.templateId)
+
+            try {
+                const result = await autoModService.applyTemplate(
+                    guildId,
+                    templateId,
+                )
+                res.json({
+                    templateId: result.template.id,
+                    settings: result.settings,
+                })
+            } catch (error) {
+                if (
+                    error instanceof Error &&
+                    error.message === 'Auto-mod template not found'
+                ) {
+                    throw AppError.notFound('Auto-mod template not found')
+                }
+                throw error
+            }
+        }),
+    )
+
+    app.get(
         '/api/guilds/:guildId/commands',
         requireAuth,
         validateParams(s.guildIdParam),

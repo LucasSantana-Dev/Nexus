@@ -17,6 +17,8 @@ jest.mock('@lucky/shared/services', () => ({
     autoModService: {
         getSettings: jest.fn(),
         updateSettings: jest.fn(),
+        listTemplates: jest.fn(),
+        applyTemplate: jest.fn(),
     },
     customCommandService: {
         listCommands: jest.fn(),
@@ -212,6 +214,105 @@ describe('Management Routes Integration', () => {
 
             expect(response.body).toEqual({
                 error: 'Internal server error',
+            })
+        })
+    })
+
+    describe('Auto-mod templates routes', () => {
+        test('GET /api/guilds/:guildId/automod/templates returns templates', async () => {
+            const mockSessionService = sessionService as jest.Mocked<
+                typeof sessionService
+            >
+            mockSessionService.getSession.mockResolvedValue(MOCK_SESSION_DATA)
+
+            const mockAutoModService = autoModService as jest.Mocked<
+                typeof autoModService
+            >
+            mockAutoModService.listTemplates.mockResolvedValue([
+                {
+                    id: 'balanced',
+                    name: 'Balanced',
+                    description: 'Balanced defaults',
+                    settings: { enabled: true },
+                },
+            ])
+
+            const response = await request(app)
+                .get('/api/guilds/111111111111111111/automod/templates')
+                .set('Cookie', ['sessionId=valid_session_id'])
+                .expect(200)
+
+            expect(response.body).toEqual({
+                templates: [
+                    {
+                        id: 'balanced',
+                        name: 'Balanced',
+                        description: 'Balanced defaults',
+                        settings: { enabled: true },
+                    },
+                ],
+            })
+        })
+
+        test('POST /api/guilds/:guildId/automod/templates/:templateId/apply applies template', async () => {
+            const mockSessionService = sessionService as jest.Mocked<
+                typeof sessionService
+            >
+            mockSessionService.getSession.mockResolvedValue(MOCK_SESSION_DATA)
+
+            const mockAutoModService = autoModService as jest.Mocked<
+                typeof autoModService
+            >
+            mockAutoModService.applyTemplate.mockResolvedValue({
+                template: {
+                    id: 'balanced',
+                },
+                settings: {
+                    guildId: '111111111111111111',
+                    enabled: true,
+                },
+            } as any)
+
+            const response = await request(app)
+                .post(
+                    '/api/guilds/111111111111111111/automod/templates/balanced/apply',
+                )
+                .set('Cookie', ['sessionId=valid_session_id'])
+                .expect(200)
+
+            expect(mockAutoModService.applyTemplate).toHaveBeenCalledWith(
+                '111111111111111111',
+                'balanced',
+            )
+            expect(response.body).toEqual({
+                templateId: 'balanced',
+                settings: {
+                    guildId: '111111111111111111',
+                    enabled: true,
+                },
+            })
+        })
+
+        test('POST /api/guilds/:guildId/automod/templates/:templateId/apply returns 404 for unknown template', async () => {
+            const mockSessionService = sessionService as jest.Mocked<
+                typeof sessionService
+            >
+            mockSessionService.getSession.mockResolvedValue(MOCK_SESSION_DATA)
+
+            const mockAutoModService = autoModService as jest.Mocked<
+                typeof autoModService
+            >
+            mockAutoModService.applyTemplate.mockRejectedValue(
+                new Error('Auto-mod template not found'),
+            )
+
+            const response = await request(app)
+                .post('/api/guilds/111111111111111111/automod/templates/unknown/apply')
+                .set('Cookie', ['sessionId=valid_session_id'])
+                .expect(404)
+
+            expect(response.body).toEqual({
+                error: 'Auto-mod template not found',
             })
         })
     })
