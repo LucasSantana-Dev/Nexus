@@ -1,6 +1,6 @@
 import { getCommandsFromDirectory } from '../../../utils/command/getCommandsFromDirectory'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { debugLog, errorLog } from '@lucky/shared/utils'
 
 async function getAutoModCommands() {
@@ -8,6 +8,7 @@ async function getAutoModCommands() {
         debugLog({ message: 'Loading automod commands...' })
         const dirName = path.dirname(fileURLToPath(import.meta.url))
         const commandsPath = dirName
+
         return await getCommandsFromDirectory({
             url: commandsPath,
             category: 'automod',
@@ -19,4 +20,3 @@ async function getAutoModCommands() {
 }
 
 export default getAutoModCommands
-export { default as automod } from './automod.js'
