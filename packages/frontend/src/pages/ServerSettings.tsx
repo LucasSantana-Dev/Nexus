@@ -77,11 +77,13 @@ export default function ServerSettingsPage() {
 
     const loadRbac = async (guildId: string) => {
         const requestVersion = ++rbacRequestVersion.current
+        const isStaleRequest = () =>
+            requestVersion !== rbacRequestVersion.current
         setRbacLoading(true)
         setRbacRolesError(null)
         try {
             const res = await api.guilds.getRbac(guildId)
-            if (requestVersion !== rbacRequestVersion.current) {
+            if (isStaleRequest()) {
                 return
             }
             setRbacRoles(res.data.roles)
@@ -92,7 +94,7 @@ export default function ServerSettingsPage() {
                 )
             }
         } catch {
-            if (requestVersion !== rbacRequestVersion.current) {
+            if (isStaleRequest()) {
                 return
             }
             setRbacRoles([])
@@ -100,10 +102,9 @@ export default function ServerSettingsPage() {
             setRbacRolesError('Failed to load role options for access rules.')
             toast.error('Failed to load access control policy')
         } finally {
-            if (requestVersion !== rbacRequestVersion.current) {
-                return
+            if (!isStaleRequest()) {
+                setRbacLoading(false)
             }
-            setRbacLoading(false)
         }
     }
 

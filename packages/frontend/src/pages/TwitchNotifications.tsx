@@ -125,7 +125,7 @@ export default function TwitchNotificationsPage() {
             setShowAdd(false)
             setNewTwitchInput('')
             setNewChannelId('')
-            void loadNotifications()
+            loadNotifications().catch(() => {})
         } catch {
             setError('Failed to add notification')
         }
