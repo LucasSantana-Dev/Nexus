@@ -1,3 +1,5 @@
+import type { PrismaClient } from '../generated/prisma/client.js'
+
 import { getPrismaClient } from './database/prismaClient'
 
 export const REQUIRED_DATABASE_STATE_ERROR_CODE = 'ERR_DB_SCHEMA_MISSING'
@@ -8,14 +10,31 @@ export const REQUIRED_DATABASE_RELATIONS = [
     'guild_automation_drifts',
 ] as const
 
-type PrismaCountArgs = { take: 1 }
-type CountDelegate = { count(args: PrismaCountArgs): Promise<number> }
+type RequiredDatabaseRelationsPrismaModels = Pick<
+    PrismaClient,
+    | 'guildRoleGrant'
+    | 'guildAutomationManifest'
+    | 'guildAutomationRun'
+    | 'guildAutomationDrift'
+>
 
 export type RequiredDatabaseStatePrisma = {
-    guildRoleGrant: CountDelegate
-    guildAutomationManifest: CountDelegate
-    guildAutomationRun: CountDelegate
-    guildAutomationDrift: CountDelegate
+    guildRoleGrant: Pick<
+        RequiredDatabaseRelationsPrismaModels['guildRoleGrant'],
+        'count'
+    >
+    guildAutomationManifest: Pick<
+        RequiredDatabaseRelationsPrismaModels['guildAutomationManifest'],
+        'count'
+    >
+    guildAutomationRun: Pick<
+        RequiredDatabaseRelationsPrismaModels['guildAutomationRun'],
+        'count'
+    >
+    guildAutomationDrift: Pick<
+        RequiredDatabaseRelationsPrismaModels['guildAutomationDrift'],
+        'count'
+    >
 }
 
 type PrismaRelationError = {
@@ -29,7 +48,7 @@ type DatabaseStateError = Error & {
 
 type RelationCheck = {
     table: (typeof REQUIRED_DATABASE_RELATIONS)[number]
-    check: (prisma: RequiredDatabaseStatePrisma) => Promise<number>
+    check: (prisma: RequiredDatabaseStatePrisma) => Promise<unknown>
 }
 
 const relationChecks: RelationCheck[] = [
@@ -52,8 +71,7 @@ const relationChecks: RelationCheck[] = [
 ]
 
 export async function verifyRequiredDatabaseRelations(
-    prisma: RequiredDatabaseStatePrisma =
-        getPrismaClient() as unknown as RequiredDatabaseStatePrisma,
+    prisma: RequiredDatabaseStatePrisma = getPrismaClient(),
 ): Promise<void> {
     for (const relationCheck of relationChecks) {
         try {
