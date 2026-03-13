@@ -19,10 +19,12 @@ jobs:
               env:
                   WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
                   WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+                  EXPECTED_CLIENT_ID: ${{ secrets.WEBAPP_EXPECTED_CLIENT_ID }}
               run: |
                   missing=""
                   [ -z "$WEBHOOK_SECRET" ] && missing="DEPLOY_WEBHOOK_SECRET "
                   [ -z "$WEBHOOK_URL" ] && missing="${missing}DEPLOY_WEBHOOK_URL"
+                  [ -z "${EXPECTED_CLIENT_ID:-}" ] && missing="${missing} WEBAPP_EXPECTED_CLIENT_ID"
                   if [ -n "$missing" ]; then
                     echo "::error::Missing secrets: $missing"
                     exit 1
