@@ -344,7 +344,7 @@ describe('GuildAccessService', () => {
         expect(context).toMatchObject({
             guildId: adminGuild.id,
             isAdmin: true,
-            hasBot: true,
+            hasBot: false,
             canManageRbac: true,
         })
         expect(mockHasBotInGuild).not.toHaveBeenCalled()
