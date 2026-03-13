@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals'
+import { ChannelType } from 'discord.js'
 
 const getWelcomeMessageMock = jest.fn()
 const getLeaveMessageMock = jest.fn()
@@ -273,5 +274,176 @@ describe('applyAutomationModules', () => {
                 allowProtected: true,
             }),
         ).rejects.toThrow('boom')
+    })
+
+    it('reconciles role and channel create/edit operations without protected deletes', async () => {
+        const existingRoleEditMock = jest.fn().mockResolvedValue(undefined)
+        const existingChannelEditMock = jest.fn().mockResolvedValue(undefined)
+        const roleCreateMock = jest.fn().mockResolvedValue(undefined)
+        const channelCreateMock = jest.fn().mockResolvedValue(undefined)
+
+        const guild = createGuild({
+            roles: {
+                cache: new Map([
+                    ['guild-1', { id: 'guild-1', editable: false }],
+                    [
+                        'existing-role',
+                        {
+                            id: 'existing-role',
+                            editable: true,
+                            edit: existingRoleEditMock,
+                            delete: jest.fn(),
+                        },
+                    ],
+                    [
+                        'legacy-role',
+                        {
+                            id: 'legacy-role',
+                            editable: true,
+                            delete: jest.fn(),
+                        },
+                    ],
+                ]),
+                create: roleCreateMock,
+            },
+            channels: {
+                cache: new Map([
+                    [
+                        'existing-channel',
+                        {
+                            id: 'existing-channel',
+                            edit: existingChannelEditMock,
+                            delete: jest.fn(),
+                        },
+                    ],
+                    [
+                        'legacy-channel',
+                        {
+                            id: 'legacy-channel',
+                            delete: jest.fn(),
+                        },
+                    ],
+                ]),
+                create: channelCreateMock,
+            },
+        })
+
+        const result = await applyAutomationModules({
+            guild: guild as any,
+            desired: {
+                roles: {
+                    roles: [
+                        {
+                            id: 'new-role',
+                            name: 'New Role',
+                            color: 0xff00ff,
+                            hoist: true,
+                            mentionable: false,
+                            permissions: '8',
+                        },
+                        {
+                            id: 'existing-role',
+                            name: 'Existing Role',
+                            color: 0x00ff00,
+                            hoist: false,
+                            mentionable: true,
+                            permissions: '0',
+                        },
+                    ],
+                    channels: [
+                        {
+                            id: 'new-channel',
+                            name: 'news',
+                            type: 'GuildAnnouncement',
+                            parentId: null,
+                            topic: 'updates',
+                        },
+                        {
+                            id: 'existing-channel',
+                            name: 'general',
+                            type: 'GuildText',
+                            parentId: null,
+                            topic: 'chat',
+                        },
+                    ],
+                },
+            } as any,
+            plan: buildPlan(['roles']) as any,
+            allowProtected: false,
+        })
+
+        expect(roleCreateMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'New Role',
+                permissions: BigInt(8),
+            }),
+        )
+        expect(existingRoleEditMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'Existing Role',
+                permissions: BigInt(0),
+            }),
+        )
+        expect(channelCreateMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'news',
+                type: ChannelType.GuildAnnouncement,
+            }),
+        )
+        expect(existingChannelEditMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: 'general',
+                topic: 'chat',
+            }),
+        )
+        expect(result.appliedModules).toEqual(['roles'])
+    })
+
+    it('skips auto-message upsert when payload message is missing', async () => {
+        const guild = createGuild()
+
+        const result = await applyAutomationModules({
+            guild: guild as any,
+            desired: {
+                automessages: {
+                    welcome: {
+                        channelId: 'welcome-channel',
+                    },
+                    leave: {
+                        enabled: true,
+                    },
+                },
+            } as any,
+            plan: buildPlan(['automessages']) as any,
+            allowProtected: false,
+        })
+
+        expect(getWelcomeMessageMock).not.toHaveBeenCalled()
+        expect(getLeaveMessageMock).not.toHaveBeenCalled()
+        expect(createMessageMock).not.toHaveBeenCalled()
+        expect(updateMessageMock).not.toHaveBeenCalled()
+        expect(result.appliedModules).toEqual(['automessages'])
+    })
+
+    it('does not apply onboarding module when mapper returns no payload', async () => {
+        const guild = createGuild()
+        manifestOnboardingToDiscordEditMock.mockReturnValue(undefined)
+
+        const result = await applyAutomationModules({
+            guild: guild as any,
+            desired: {
+                onboarding: {
+                    enabled: true,
+                    mode: 1,
+                    defaultChannelIds: [],
+                    prompts: [],
+                },
+            } as any,
+            plan: buildPlan(['onboarding']) as any,
+            allowProtected: false,
+        })
+
+        expect(guild.editOnboarding).not.toHaveBeenCalled()
+        expect(result.appliedModules).toEqual([])
     })
 })
