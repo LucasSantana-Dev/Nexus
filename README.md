@@ -160,6 +160,10 @@ npm run db:migrate   # Required before start; startup preflight checks guild_rol
 npm start
 ```
 
+If `npm run db:migrate` is skipped, backend startup preflight fails on missing
+`guild_role_grants`, and RBAC endpoints return explicit `503` errors until the
+schema is migrated.
+
 ### Docker (Recommended)
 
 ```bash
