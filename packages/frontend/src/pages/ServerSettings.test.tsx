@@ -258,6 +258,44 @@ describe('ServerSettingsPage', () => {
         })
     })
 
+    test('shows re-authenticate action when settings fetch returns auth error', async () => {
+        mockGuildStoreFn(mockGuild)
+        vi.mocked(api.guilds.getSettings).mockRejectedValue(
+            new ApiError(401, 'Session expired'),
+        )
+
+        renderPage()
+
+        await waitFor(() => {
+            expect(
+                screen.getByText('Unable to load server settings'),
+            ).toBeInTheDocument()
+        })
+
+        expect(screen.getByText('Re-authenticate')).toBeInTheDocument()
+    })
+
+    test('shows network guidance without re-authenticate action on network failure', async () => {
+        mockGuildStoreFn(mockGuild)
+        vi.mocked(api.guilds.getSettings).mockRejectedValue(
+            new ApiError(0, ''),
+        )
+
+        renderPage()
+
+        await waitFor(() => {
+            expect(
+                screen.getByText(
+                    'Unable to reach API. Check your connection and retry.',
+                ),
+            ).toBeInTheDocument()
+        })
+
+        expect(
+            screen.queryByRole('link', { name: 'Re-authenticate' }),
+        ).not.toBeInTheDocument()
+    })
+
     test('shows RBAC manager message when user cannot manage policy', async () => {
         mockGuildStoreFn({ ...mockGuild, canManageRbac: false })
 
