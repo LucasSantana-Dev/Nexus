@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GitGuardian incident hardening: removed hardcoded compose PostgreSQL password
+  fallbacks, switched OAuth expected client-id checks to env/secret-managed
+  values only, and replaced secret-like test/example literals that triggered
+  detectors
 - OAuth callback resolution now prioritizes `WEBAPP_BACKEND_URL` in production
   (fallback: `WEBAPP_REDIRECT_URI`) so `/api/auth/discord` and
   `/api/health/auth-config` stay aligned with split-origin API deployments.

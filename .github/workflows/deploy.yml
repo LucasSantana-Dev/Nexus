@@ -206,10 +206,15 @@ jobs:
             - name: OAuth redirect contract smoke check
               env:
                   WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+                  EXPECTED_CLIENT_ID: ${{ secrets.WEBAPP_EXPECTED_CLIENT_ID }}
               run: |
                   set -euo pipefail
 
-                  expected_client_id="962198089161134131"
+                  expected_client_id="${EXPECTED_CLIENT_ID:-}"
+                  if [ -z "$expected_client_id" ]; then
+                    echo "::error::Missing required secret WEBAPP_EXPECTED_CLIENT_ID"
+                    exit 1
+                  fi
                   expected_redirect_uri="https://lucky.lucassantana.tech/api/auth/callback"
 
                   base_url=$(node -e 'const u = new URL(process.env.WEBHOOK_URL); console.log(`${u.protocol}//${u.host}`)')
