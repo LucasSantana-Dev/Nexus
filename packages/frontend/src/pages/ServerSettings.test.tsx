@@ -6,7 +6,6 @@ import ServerSettingsPage from './ServerSettings'
 import { api } from '@/services/api'
 import { ApiError } from '@/services/ApiError'
 import { useGuildStore } from '@/stores/guildStore'
-import { ApiError } from '@/services/ApiError'
 
 vi.mock('@/services/api')
 vi.mock('@/stores/guildStore')
