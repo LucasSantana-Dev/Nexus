@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import {
+    useState,
+    useEffect,
+    useCallback,
+    useRef,
+    type ReactElement,
+} from 'react'
 import { motion } from 'framer-motion'
 import {
     Settings,
@@ -31,6 +37,7 @@ import {
 import Skeleton from '@/components/ui/Skeleton'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
+import { ApiError } from '@/services/ApiError'
 import { useGuildStore } from '@/stores/guildStore'
 import { RBAC_MODULES, type RoleGrant, type ServerSettings } from '@/types'
 
@@ -49,17 +56,68 @@ const TIMEZONES = [
     'Australia/Sydney',
 ]
 
+type SettingsLoadErrorKind = 'auth' | 'forbidden' | 'network' | 'upstream'
+
+type SettingsLoadError = {
+    kind: SettingsLoadErrorKind
+    message: string
+}
+
+const DEFAULT_SETTINGS: ServerSettings = {
+    nickname: '',
+    commandPrefix: '!',
+    managerRoles: [],
+    updatesChannel: '',
+    timezone: 'UTC',
+    disableWarnings: false,
+}
+
+function classifySettingsLoadError(error: unknown): SettingsLoadError {
+    if (error instanceof ApiError) {
+        if (error.status === 401) {
+            return {
+                kind: 'auth',
+                message: 'Session expired. Please sign in again.',
+            }
+        }
+
+        if (error.status === 403) {
+            return {
+                kind: 'forbidden',
+                message: 'You no longer have access to this server settings.',
+            }
+        }
+
+        if (error.status === 0) {
+            return {
+                kind: 'network',
+                message:
+                    'Unable to reach API. Check your connection and retry.',
+            }
+        }
+
+        return {
+            kind: 'upstream',
+            message: error.message || 'Failed to load server settings.',
+        }
+    }
+
+    if (error instanceof Error) {
+        return { kind: 'upstream', message: error.message }
+    }
+
+    return {
+        kind: 'upstream',
+        message: 'Failed to load server settings.',
+    }
+}
+
 export default function ServerSettingsPage() {
     const { selectedGuild, memberContext } = useGuildStore()
-    const [settings, setSettings] = useState<ServerSettings>({
-        nickname: '',
-        commandPrefix: '!',
-        managerRoles: [],
-        updatesChannel: '',
-        timezone: 'UTC',
-        disableWarnings: false,
-    })
+    const [settings, setSettings] = useState<ServerSettings>(DEFAULT_SETTINGS)
     const [loading, setLoading] = useState(true)
+    const [settingsLoadError, setSettingsLoadError] =
+        useState<SettingsLoadError | null>(null)
     const [saving, setSaving] = useState(false)
     const [rbacLoading, setRbacLoading] = useState(false)
     const [rbacSaving, setRbacSaving] = useState(false)
@@ -70,20 +128,20 @@ export default function ServerSettingsPage() {
         Array<{ id: string; name: string }>
     >([])
     const [rbacGrants, setRbacGrants] = useState<RoleGrant[]>([])
-    const rbacRequestVersion = useRef(0)
+    const rbacRequestIdRef = useRef(0)
+    const settingsRequestVersion = useRef(0)
 
     const canManageRbac =
         memberContext?.canManageRbac ?? selectedGuild?.canManageRbac ?? false
 
-    const loadRbac = async (guildId: string) => {
-        const requestVersion = ++rbacRequestVersion.current
-        const isStaleRequest = () =>
-            requestVersion !== rbacRequestVersion.current
+    const loadRbac = useCallback(async (guildId: string) => {
+        const requestId = rbacRequestIdRef.current + 1
+        rbacRequestIdRef.current = requestId
         setRbacLoading(true)
         setRbacRolesError(null)
         try {
             const res = await api.guilds.getRbac(guildId)
-            if (isStaleRequest()) {
+            if (requestId !== rbacRequestIdRef.current) {
                 return
             }
             setRbacRoles(res.data.roles)
@@ -93,45 +151,71 @@ export default function ServerSettingsPage() {
                     'No assignable roles found for this server yet.',
                 )
             }
-        } catch {
-            if (isStaleRequest()) {
+        } catch (error) {
+            if (requestId !== rbacRequestIdRef.current) {
                 return
             }
+            const detailsMessage =
+                error instanceof ApiError
+                    ? error.message
+                    : 'Failed to load role options for access rules.'
             setRbacRoles([])
             setRbacGrants([])
-            setRbacRolesError('Failed to load role options for access rules.')
-            toast.error('Failed to load access control policy')
+            setRbacRolesError(detailsMessage)
+            toast.error(detailsMessage)
         } finally {
-            if (!isStaleRequest()) {
+            if (requestId === rbacRequestIdRef.current) {
                 setRbacLoading(false)
             }
         }
-    }
+    }, [])
 
-    useEffect(() => {
-        if (!selectedGuild?.id) return
+    const loadSettings = useCallback(async (guildId: string) => {
+        const requestVersion = ++settingsRequestVersion.current
+        const isStaleRequest = () =>
+            requestVersion !== settingsRequestVersion.current
+
         setLoading(true)
-        api.guilds
-            .getSettings(selectedGuild.id)
-            .then((res) => {
-                if (res.data.settings) setSettings(res.data.settings)
-            })
-            .catch(() => {})
-            .finally(() => setLoading(false))
-    }, [selectedGuild?.id])
+        setSettingsLoadError(null)
+
+        try {
+            const response = await api.guilds.getSettings(guildId)
+            if (isStaleRequest()) {
+                return
+            }
+            setSettings(response.data.settings ?? DEFAULT_SETTINGS)
+        } catch (error) {
+            if (isStaleRequest()) {
+                return
+            }
+            setSettings(DEFAULT_SETTINGS)
+            setSettingsLoadError(classifySettingsLoadError(error))
+        } finally {
+            if (!isStaleRequest()) {
+                setLoading(false)
+            }
+        }
+    }, [])
 
     useEffect(() => {
-        if (!selectedGuild?.id || !canManageRbac) {
-            rbacRequestVersion.current += 1
-            setRbacRoles([])
-            setRbacGrants([])
-            setRbacRolesError(null)
-            setRbacLoading(false)
+        if (!selectedGuild?.id) {
             return
         }
 
-        void loadRbac(selectedGuild.id)
-    }, [selectedGuild?.id, canManageRbac])
+        void loadSettings(selectedGuild.id)
+    }, [selectedGuild?.id, loadSettings])
+
+    useEffect(() => {
+        if (!selectedGuild?.id || !canManageRbac) {
+            rbacRequestIdRef.current += 1
+            setRbacRoles([])
+            setRbacGrants([])
+            setRbacRolesError(null)
+            return
+        }
+
+        loadRbac(selectedGuild.id)
+    }, [selectedGuild?.id, canManageRbac, loadRbac])
 
     const update = <K extends keyof ServerSettings>(
         key: K,
@@ -229,8 +313,12 @@ export default function ServerSettingsPage() {
             toast.success(
                 `Criativaria baseline applied (${response.data.run.status})`,
             )
-        } catch {
-            toast.error('Failed to apply Criativaria baseline')
+        } catch (error) {
+            if (error instanceof ApiError) {
+                toast.error(error.message)
+            } else {
+                toast.error('Failed to apply Criativaria baseline')
+            }
         } finally {
             setApplyingCriativariaPreset(false)
         }
@@ -264,6 +352,186 @@ export default function ServerSettingsPage() {
                         <Skeleton className='h-10 w-full' />
                     </Card>
                 ))}
+            </div>
+        )
+    }
+
+    if (settingsLoadError) {
+        return (
+            <div className='space-y-6'>
+                <header>
+                    <h1 className='text-2xl font-bold text-white'>
+                        Server Settings
+                    </h1>
+                    <p className='text-sm text-lucky-text-secondary mt-1'>
+                        General configuration for {selectedGuild.name}
+                    </p>
+                </header>
+                <Card className='p-5 space-y-4'>
+                    <div className='flex items-center gap-2 text-lucky-yellow'>
+                        <AlertTriangle className='w-5 h-5' />
+                        <h2 className='text-base font-semibold text-white'>
+                            Unable to load server settings
+                        </h2>
+                    </div>
+                    <p className='text-sm text-lucky-text-secondary'>
+                        {settingsLoadError.message}
+                    </p>
+                    <div className='flex items-center gap-3'>
+                        <Button
+                            type='button'
+                            onClick={() => {
+                                if (!selectedGuild?.id) {
+                                    return
+                                }
+                                void loadSettings(selectedGuild.id)
+                            }}
+                        >
+                            Retry
+                        </Button>
+                        {(settingsLoadError.kind === 'auth' ||
+                            settingsLoadError.kind === 'forbidden') && (
+                            <a
+                                href={api.auth.getDiscordLoginUrl()}
+                                className='text-sm text-lucky-text-secondary hover:text-lucky-text-primary'
+                            >
+                                Re-authenticate
+                            </a>
+                        )}
+                    </div>
+                </Card>
+            </div>
+        )
+    }
+
+    let rbacContent: ReactElement
+    if (!canManageRbac) {
+        rbacContent = (
+            <div className='rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-4'>
+                <p className='text-sm text-lucky-text-secondary'>
+                    Only server owner or users with Administrator/Manage Server
+                    permission can manage RBAC policy.
+                </p>
+            </div>
+        )
+    } else if (rbacLoading) {
+        rbacContent = (
+            <div className='space-y-3'>
+                {['rbac-skeleton-1', 'rbac-skeleton-2', 'rbac-skeleton-3'].map(
+                    (skeletonKey) => (
+                        <Skeleton key={skeletonKey} className='h-12 w-full' />
+                    ),
+                )}
+            </div>
+        )
+    } else {
+        rbacContent = (
+            <div className='space-y-3'>
+                {rbacRolesError && (
+                    <div className='rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-3 text-sm text-lucky-text-secondary'>
+                        <div className='flex items-center justify-between gap-3'>
+                            <span>{rbacRolesError}</span>
+                            {selectedGuild?.id && (
+                                <Button
+                                    type='button'
+                                    size='sm'
+                                    variant='ghost'
+                                    className='gap-2'
+                                    onClick={() => {
+                                        loadRbac(selectedGuild.id)
+                                    }}
+                                >
+                                    <RotateCcw className='w-4 h-4' />
+                                    Retry Roles
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {rbacGrants.length === 0 ? (
+                    <p className='text-sm text-lucky-text-tertiary'>
+                        No RBAC rules configured. Add a rule to grant module
+                        access.
+                    </p>
+                ) : (
+                    rbacGrants.map((grant, index) => (
+                        <div
+                            key={`${grant.roleId}:${grant.module}:${grant.mode}:${index}`}
+                            className='grid grid-cols-1 gap-3 rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-3 md:grid-cols-[1.4fr_1fr_1fr_auto]'
+                        >
+                            <Select
+                                value={grant.roleId}
+                                onValueChange={(value) =>
+                                    updateRbacGrant(index, {
+                                        roleId: value,
+                                    })
+                                }
+                            >
+                                <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
+                                    <SelectValue placeholder='Role' />
+                                </SelectTrigger>
+                                <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
+                                    {rbacRoles.map((role) => (
+                                        <SelectItem
+                                            key={role.id}
+                                            value={role.id}
+                                        >
+                                            {role.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select
+                                value={grant.module}
+                                onValueChange={(value) =>
+                                    updateRbacGrant(index, {
+                                        module: value as RoleGrant['module'],
+                                    })
+                                }
+                            >
+                                <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
+                                    <SelectValue placeholder='Module' />
+                                </SelectTrigger>
+                                <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
+                                    {RBAC_MODULES.map((module) => (
+                                        <SelectItem key={module} value={module}>
+                                            {module}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select
+                                value={grant.mode}
+                                onValueChange={(value) =>
+                                    updateRbacGrant(index, {
+                                        mode: value as RoleGrant['mode'],
+                                    })
+                                }
+                            >
+                                <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
+                                    <SelectValue placeholder='Mode' />
+                                </SelectTrigger>
+                                <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
+                                    <SelectItem value='view'>view</SelectItem>
+                                    <SelectItem value='manage'>
+                                        manage
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Button
+                                type='button'
+                                variant='ghost'
+                                className='text-lucky-text-tertiary hover:text-lucky-error'
+                                onClick={() => removeRbacGrant(index)}
+                            >
+                                <Trash2 className='w-4 h-4' />
+                            </Button>
+                        </div>
+                    ))
+                )}
             </div>
         )
     }
@@ -453,15 +721,17 @@ export default function ServerSettingsPage() {
                                     Criativaria Baseline
                                 </h2>
                                 <p className='text-xs text-lucky-text-tertiary'>
-                                    Apply the migration baseline from legacy bots
-                                    with safe reconcile defaults.
+                                    Apply the migration baseline from legacy
+                                    bots with safe reconcile defaults.
                                 </p>
                             </div>
                         </div>
                         <Button
                             type='button'
                             onClick={handleApplyCriativariaPreset}
-                            disabled={!canManageRbac || applyingCriativariaPreset}
+                            disabled={
+                                !canManageRbac || applyingCriativariaPreset
+                            }
                             className='gap-2'
                         >
                             {applyingCriativariaPreset ? (
@@ -503,8 +773,8 @@ export default function ServerSettingsPage() {
                                     disabled={rbacLoading}
                                     title={
                                         !rbacLoading && rbacRoles.length === 0
-                                            ? rbacRolesError ??
-                                              'No assignable roles available right now.'
+                                            ? (rbacRolesError ??
+                                              'No assignable roles available right now.')
                                             : undefined
                                     }
                                 >
@@ -528,138 +798,7 @@ export default function ServerSettingsPage() {
                         )}
                     </div>
 
-                    {!canManageRbac ? (
-                        <div className='rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-4'>
-                            <p className='text-sm text-lucky-text-secondary'>
-                                Only server owner or users with
-                                Administrator/Manage Server permission can
-                                manage RBAC policy.
-                            </p>
-                        </div>
-                    ) : rbacLoading ? (
-                        <div className='space-y-3'>
-                            {Array.from({ length: 3 }).map((_, index) => (
-                                <Skeleton key={index} className='h-12 w-full' />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className='space-y-3'>
-                            {rbacRolesError && (
-                                <div className='rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-3 text-sm text-lucky-text-secondary'>
-                                    <div className='flex items-center justify-between gap-3'>
-                                        <span>{rbacRolesError}</span>
-                                        {selectedGuild?.id && (
-                                            <Button
-                                                type='button'
-                                                size='sm'
-                                                variant='ghost'
-                                                className='gap-2'
-                                                onClick={() =>
-                                                    void loadRbac(
-                                                        selectedGuild.id,
-                                                    )
-                                                }
-                                            >
-                                                <RotateCcw className='w-4 h-4' />
-                                                Retry Roles
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            {rbacGrants.length === 0 ? (
-                                <p className='text-sm text-lucky-text-tertiary'>
-                                    No RBAC rules configured. Add a rule to
-                                    grant module access.
-                                </p>
-                            ) : (
-                                rbacGrants.map((grant, index) => (
-                                    <div
-                                        key={`${grant.roleId}:${grant.module}:${grant.mode}:${index}`}
-                                        className='grid grid-cols-1 gap-3 rounded-xl border border-lucky-border bg-lucky-bg-tertiary/50 p-3 md:grid-cols-[1.4fr_1fr_1fr_auto]'
-                                    >
-                                        <Select
-                                            value={grant.roleId}
-                                            onValueChange={(value) =>
-                                                updateRbacGrant(index, {
-                                                    roleId: value,
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
-                                                <SelectValue placeholder='Role' />
-                                            </SelectTrigger>
-                                            <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
-                                                {rbacRoles.map((role) => (
-                                                    <SelectItem
-                                                        key={role.id}
-                                                        value={role.id}
-                                                    >
-                                                        {role.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-
-                                        <Select
-                                            value={grant.module}
-                                            onValueChange={(value) =>
-                                                updateRbacGrant(index, {
-                                                    module: value as RoleGrant['module'],
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
-                                                <SelectValue placeholder='Module' />
-                                            </SelectTrigger>
-                                            <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
-                                                {RBAC_MODULES.map((module) => (
-                                                    <SelectItem
-                                                        key={module}
-                                                        value={module}
-                                                    >
-                                                        {module}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-
-                                        <Select
-                                            value={grant.mode}
-                                            onValueChange={(value) =>
-                                                updateRbacGrant(index, {
-                                                    mode: value as RoleGrant['mode'],
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger className='bg-lucky-bg-secondary border-lucky-border text-white'>
-                                                <SelectValue placeholder='Mode' />
-                                            </SelectTrigger>
-                                            <SelectContent className='bg-lucky-bg-secondary border-lucky-border'>
-                                                <SelectItem value='view'>
-                                                    view
-                                                </SelectItem>
-                                                <SelectItem value='manage'>
-                                                    manage
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
-
-                                        <Button
-                                            type='button'
-                                            variant='ghost'
-                                            className='text-lucky-text-tertiary hover:text-lucky-error'
-                                            onClick={() =>
-                                                removeRbacGrant(index)
-                                            }
-                                        >
-                                            <Trash2 className='w-4 h-4' />
-                                        </Button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    )}
+                    {rbacContent}
                 </Card>
             </motion.div>
         </div>

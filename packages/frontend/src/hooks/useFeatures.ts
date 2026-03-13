@@ -5,11 +5,12 @@ import { useGuildStore } from '@/stores/guildStore'
 import type { FeatureToggleName } from '@/types'
 
 export function useFeatures() {
-    const user = useAuthStore((state) => state.user)
+    const isDeveloper = useAuthStore((state) => state.isDeveloper)
     const selectedGuild = useGuildStore((state) => state.selectedGuild)
     const globalToggles = useFeaturesStore((state) => state.globalToggles)
     const isLoading = useFeaturesStore((state) => state.isLoading)
     const features = useFeaturesStore((state) => state.features)
+    const loadError = useFeaturesStore((state) => state.loadError)
     const fetchFeatures = useFeaturesStore((state) => state.fetchFeatures)
     const fetchGlobalToggles = useFeaturesStore(
         (state) => state.fetchGlobalToggles,
@@ -24,13 +25,14 @@ export function useFeatures() {
         (state) => state.updateServerToggle,
     )
     const getServerToggles = useFeaturesStore((state) => state.getServerToggles)
+    const clearLoadError = useFeaturesStore((state) => state.clearLoadError)
 
     useEffect(() => {
         fetchFeatures()
-        if (user?.isDeveloper) {
+        if (isDeveloper) {
             fetchGlobalToggles()
         }
-    }, [fetchFeatures, fetchGlobalToggles, user?.isDeveloper])
+    }, [fetchFeatures, fetchGlobalToggles, isDeveloper])
 
     useEffect(() => {
         if (selectedGuild) {
@@ -48,6 +50,17 @@ export function useFeatures() {
         }
     }
 
+    const retryLoad = () => {
+        clearLoadError()
+        fetchFeatures()
+        if (isDeveloper) {
+            fetchGlobalToggles()
+        }
+        if (selectedGuild) {
+            fetchServerToggles(selectedGuild.id)
+        }
+    }
+
     const serverToggles = selectedGuild
         ? getServerToggles(selectedGuild.id)
         : globalToggles
@@ -57,7 +70,9 @@ export function useFeatures() {
         serverToggles,
         isLoading,
         features,
-        isDeveloper: user?.isDeveloper ?? false,
+        loadError,
+        isDeveloper,
+        retryLoad,
         handleGlobalToggle,
         handleServerToggle,
     }

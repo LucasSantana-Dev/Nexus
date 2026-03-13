@@ -57,7 +57,7 @@ Add these to your `.env` file:
 # Discord OAuth2 Configuration
 CLIENT_ID=your_discord_client_id
 CLIENT_SECRET=your_discord_client_secret
-WEBAPP_REDIRECT_URI=http://localhost:3000/api/auth/callback
+WEBAPP_REDIRECT_URI=http://localhost:5173/api/auth/callback
 
 # Web Application Configuration
 WEBAPP_ENABLED=true
@@ -100,8 +100,8 @@ VITE_API_BASE_URL=https://api.yourdomain.com/api
 ### Step 2: Configure OAuth2 Redirect URI
 
 1. In the "Redirects" section, add your callback URL:
-    - Development: `http://localhost:3000/api/auth/callback`
-    - Production: `https://api.yourdomain.com/api/auth/callback`
+    - Development: `http://localhost:5173/api/auth/callback`
+    - Production: `https://your-frontend-domain.com/api/auth/callback`
 2. Save changes
 
 ### Step 3: Get Credentials
@@ -242,7 +242,7 @@ For production, ensure:
 
 - `WEBAPP_FRONTEND_URL` points to your production frontend URL
 - `WEBAPP_BACKEND_URL` points to your production backend/API URL (if separate host is used)
-- `WEBAPP_REDIRECT_URI` matches your production callback URL on the API origin
+- `WEBAPP_REDIRECT_URI` matches your production callback URL on the frontend origin
 - `WEBAPP_SESSION_SECRET` is a strong random value
 - `NODE_ENV=production` for secure cookies
 

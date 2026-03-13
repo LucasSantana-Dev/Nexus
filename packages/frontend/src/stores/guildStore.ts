@@ -3,11 +3,7 @@ import type { Guild, GuildMemberContext, ServerSettings } from '@/types'
 import { api } from '@/services/api'
 import { ApiError } from '@/services/ApiError'
 
-export type GuildLoadErrorKind =
-    | 'auth'
-    | 'forbidden'
-    | 'network'
-    | 'upstream'
+export type GuildLoadErrorKind = 'auth' | 'forbidden' | 'network' | 'upstream'
 
 export interface GuildLoadErrorState {
     kind: GuildLoadErrorKind
@@ -15,11 +11,34 @@ export interface GuildLoadErrorState {
     status?: number
 }
 
+interface GuildState {
+    guilds: Guild[]
+    selectedGuild: Guild | null
+    selectedGuildId: string | null
+    isLoading: boolean
+    hasFetchedGuilds: boolean
+    guildLoadError: GuildLoadErrorState | null
+    memberContext: GuildMemberContext | null
+    memberContextLoading: boolean
+    serverSettings: ServerSettings | null
+    fetchGuilds: (force?: boolean) => Promise<void>
+    selectGuild: (guild: Guild | null) => void
+    fetchMemberContext: (guildId: string) => Promise<void>
+    setSelectedGuild: (guildId: string | null) => void
+    getSelectedGuild: () => Guild | null
+    updateServerSettings: (settings: Partial<ServerSettings>) => void
+}
+
 function classifyGuildLoadError(error: unknown): GuildLoadErrorState {
     if (error instanceof ApiError) {
         if (error.status === 401) {
-            return { kind: 'auth', message: error.message, status: error.status }
+            return {
+                kind: 'auth',
+                message: error.message,
+                status: error.status,
+            }
         }
+
         if (error.status === 403) {
             return {
                 kind: 'forbidden',
@@ -27,6 +46,7 @@ function classifyGuildLoadError(error: unknown): GuildLoadErrorState {
                 status: error.status,
             }
         }
+
         if (error.status === 0) {
             return {
                 kind: 'network',
@@ -35,7 +55,11 @@ function classifyGuildLoadError(error: unknown): GuildLoadErrorState {
             }
         }
 
-        return { kind: 'upstream', message: error.message, status: error.status }
+        return {
+            kind: 'upstream',
+            message: error.message,
+            status: error.status,
+        }
     }
 
     if (error instanceof Error) {
@@ -45,156 +69,130 @@ function classifyGuildLoadError(error: unknown): GuildLoadErrorState {
     return { kind: 'upstream', message: 'Unable to load servers' }
 }
 
-interface GuildState {
-    guilds: Guild[]
-    selectedGuild: Guild | null
-    selectedGuildId: string | null
-    currentGuildRequestId: number
-    currentGuildSelectionRequestId: number
-    isLoading: boolean
-    guildLoadError: GuildLoadErrorState | null
-    memberContext: GuildMemberContext | null
-    memberContextLoading: boolean
-    serverSettings: ServerSettings | null
-    fetchGuilds: () => Promise<void>
-    selectGuild: (guild: Guild | null) => void
-    fetchMemberContext: (guildId: string, requestId?: number) => Promise<void>
-    setSelectedGuild: (guildId: string | null) => void
-    getSelectedGuild: () => Guild | null
-    updateServerSettings: (settings: Partial<ServerSettings>) => void
-}
+let guildFetchPromise: Promise<void> | null = null
 
 export const useGuildStore = create<GuildState>((set, get) => ({
     guilds: [],
     selectedGuild: null,
     selectedGuildId: null,
-    currentGuildRequestId: 0,
-    currentGuildSelectionRequestId: 0,
     isLoading: false,
+    hasFetchedGuilds: false,
     guildLoadError: null,
     memberContext: null,
     memberContextLoading: false,
     serverSettings: null,
 
-    fetchGuilds: async () => {
-        const requestId = get().currentGuildRequestId + 1
-        set({
-            isLoading: true,
-            guildLoadError: null,
-            currentGuildRequestId: requestId,
-        })
+    fetchGuilds: async (force = false) => {
+        if (!force && get().isLoading && guildFetchPromise) {
+            await guildFetchPromise
+            return
+        }
+
+        if (!force && get().hasFetchedGuilds) {
+            return
+        }
+
+        set({ isLoading: true, guildLoadError: null })
+
+        const run = (async () => {
+            try {
+                const response = await api.guilds.list()
+                const guilds = response.data.guilds
+                set({ guilds, isLoading: false, hasFetchedGuilds: true })
+
+                const { selectedGuildId, selectedGuild } = get()
+                if (selectedGuildId) {
+                    const refreshedSelectedGuild =
+                        guilds.find((guild) => guild.id === selectedGuildId) ??
+                        null
+
+                    if (refreshedSelectedGuild) {
+                        get().selectGuild(refreshedSelectedGuild)
+                        return
+                    }
+
+                    set({
+                        selectedGuild: null,
+                        selectedGuildId: null,
+                        memberContext: null,
+                        memberContextLoading: false,
+                        serverSettings: null,
+                    })
+                }
+
+                if (guilds.length > 0 && !selectedGuild) {
+                    const firstWithBot = guilds.find((guild) => guild.botAdded)
+                    if (firstWithBot) {
+                        get().selectGuild(firstWithBot)
+                    }
+                }
+            } catch (error) {
+                set((state) => ({
+                    guilds: state.guilds,
+                    selectedGuild: state.selectedGuild,
+                    selectedGuildId: state.selectedGuildId,
+                    memberContext: state.memberContext,
+                    memberContextLoading: false,
+                    serverSettings: state.serverSettings,
+                    guildLoadError: classifyGuildLoadError(error),
+                    isLoading: false,
+                    hasFetchedGuilds: true,
+                }))
+            }
+        })()
+
+        guildFetchPromise = run
         try {
-            const response = await api.guilds.list()
-            if (requestId !== get().currentGuildRequestId) {
-                return
+            await run
+        } finally {
+            if (guildFetchPromise === run) {
+                guildFetchPromise = null
             }
-
-            const guilds = response.data.guilds
-            const currentSelectedGuildId = get().selectedGuildId
-            const nextSelectedGuild = currentSelectedGuildId
-                ? guilds.find((guild) => guild.id === currentSelectedGuildId) ??
-                  null
-                : null
-
-            set({
-                guilds,
-                isLoading: false,
-                guildLoadError: null,
-                selectedGuild: nextSelectedGuild,
-                selectedGuildId: nextSelectedGuild?.id ?? null,
-            })
-
-            if (nextSelectedGuild) {
-                return
-            }
-
-            set({
-                memberContext: null,
-                memberContextLoading: false,
-                serverSettings: null,
-            })
-
-            const firstWithBot = guilds.find((guild) => guild.botAdded)
-            if (firstWithBot) {
-                get().selectGuild(firstWithBot)
-            }
-        } catch (error) {
-            if (requestId !== get().currentGuildRequestId) {
-                return
-            }
-            set({
-                guilds: [],
-                selectedGuild: null,
-                selectedGuildId: null,
-                memberContext: null,
-                memberContextLoading: false,
-                serverSettings: null,
-                guildLoadError: classifyGuildLoadError(error),
-                isLoading: false,
-            })
         }
     },
 
     selectGuild: (guild) => {
-        const requestId = get().currentGuildSelectionRequestId + 1
+        const guildId = guild?.id ?? null
         set({
             selectedGuild: guild,
-            selectedGuildId: guild?.id || null,
+            selectedGuildId: guildId,
             memberContext: null,
             memberContextLoading: Boolean(guild),
             serverSettings: null,
-            currentGuildSelectionRequestId: requestId,
         })
-        if (guild) {
-            void get().fetchMemberContext(guild.id, requestId)
-            api.guilds
-                .getSettings(guild.id)
-                .then((response) => {
-                    if (requestId !== get().currentGuildSelectionRequestId) {
-                        return
-                    }
-                    set({ serverSettings: response.data.settings })
-                })
-                .catch((error) => {
-                    if (requestId !== get().currentGuildSelectionRequestId) {
-                        return
-                    }
-                    console.error('Failed to load server settings', {
-                        guildId: guild.id,
-                        requestId,
-                        error,
-                    })
-                    set({ serverSettings: null })
-                })
+
+        if (!guildId) {
+            return
         }
+
+        void get().fetchMemberContext(guildId)
     },
 
-    fetchMemberContext: async (guildId, requestId) => {
-        const activeRequestId =
-            requestId ?? get().currentGuildSelectionRequestId
-        set({ memberContextLoading: true })
+    fetchMemberContext: async (guildId) => {
+        set((state) =>
+            state.selectedGuildId === guildId
+                ? { memberContextLoading: true }
+                : {},
+        )
         try {
             const response = await api.guilds.getMe(guildId)
-            if (activeRequestId !== get().currentGuildSelectionRequestId) {
-                return
-            }
-            set({
-                memberContext: response.data,
-                memberContextLoading: false,
-            })
-        } catch (error) {
-            if (activeRequestId !== get().currentGuildSelectionRequestId) {
-                return
-            }
-            console.error('Failed to load guild member context', {
-                guildId,
-                requestId: activeRequestId,
-                error,
-            })
-            set({
-                memberContext: null,
-                memberContextLoading: false,
-            })
+            set((state) =>
+                state.selectedGuildId === guildId
+                    ? {
+                          memberContext: response.data,
+                          memberContextLoading: false,
+                      }
+                    : {},
+            )
+        } catch {
+            set((state) =>
+                state.selectedGuildId === guildId
+                    ? {
+                          memberContext: null,
+                          memberContextLoading: false,
+                      }
+                    : {},
+            )
         }
     },
 

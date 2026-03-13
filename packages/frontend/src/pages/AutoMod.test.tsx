@@ -4,8 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import AutoModPage from './AutoMod'
 import { api } from '@/services/api'
+import { ApiError } from '@/services/ApiError'
 import { useGuildStore } from '@/stores/guildStore'
-import type { AutoModSettings, AutoModTemplate } from '@/types'
+import type { AutoModSettings } from '@/types'
 
 vi.mock('@/services/api')
 vi.mock('@/stores/guildStore')
@@ -42,15 +43,6 @@ const mockSettings: AutoModSettings = {
     exemptRoles: [],
     createdAt: new Date(),
     updatedAt: new Date(),
-}
-
-const strictTemplate: AutoModTemplate = {
-    id: 'strict',
-    name: 'Strict Shield',
-    description: 'Blocks common malicious links',
-    settings: {
-        linksEnabled: true,
-    },
 }
 
 function mockGuildStore(guild: typeof mockGuild | null) {
@@ -115,96 +107,6 @@ describe('AutoModPage', () => {
                 screen.getByText('Invite Link Filtering'),
             ).toBeInTheDocument()
             expect(screen.getByText('Banned Words')).toBeInTheDocument()
-        })
-    })
-
-    test('renders templates and applies selected template', async () => {
-        const user = userEvent.setup()
-        const { toast } = await import('sonner')
-        mockGuildStore(mockGuild)
-        vi.mocked(api.automod.getSettings).mockResolvedValue({
-            data: { settings: mockSettings },
-        } as any)
-        vi.mocked(api.automod.listTemplates).mockResolvedValue({
-            data: {
-                templates: [strictTemplate],
-            },
-        } as any)
-        vi.mocked(api.automod.applyTemplate).mockResolvedValue({
-            data: {
-                templateId: 'strict',
-                settings: {
-                    ...mockSettings,
-                    linksEnabled: true,
-                },
-            },
-        } as any)
-
-        renderPage()
-
-        await waitFor(() => {
-            expect(screen.getByText('Strict Shield')).toBeInTheDocument()
-        })
-
-        await user.click(screen.getByRole('button', { name: /Apply template/i }))
-
-        await waitFor(() => {
-            expect(api.automod.applyTemplate).toHaveBeenCalledWith(
-                '123',
-                'strict',
-            )
-            expect(toast.success).toHaveBeenCalledWith(
-                'Auto-moderation template applied',
-            )
-        })
-    })
-
-    test('shows error toast when applying template fails', async () => {
-        const user = userEvent.setup()
-        const { toast } = await import('sonner')
-        mockGuildStore(mockGuild)
-        vi.mocked(api.automod.getSettings).mockResolvedValue({
-            data: { settings: mockSettings },
-        } as any)
-        vi.mocked(api.automod.listTemplates).mockResolvedValue({
-            data: {
-                templates: [strictTemplate],
-            },
-        } as any)
-        vi.mocked(api.automod.applyTemplate).mockRejectedValue(
-            new Error('template failed'),
-        )
-
-        renderPage()
-
-        await waitFor(() => {
-            expect(screen.getByText('Strict Shield')).toBeInTheDocument()
-        })
-
-        await user.click(screen.getByRole('button', { name: /Apply template/i }))
-
-        await waitFor(() => {
-            expect(toast.error).toHaveBeenCalledWith(
-                'Failed to apply template',
-            )
-        })
-    })
-
-    test('shows empty templates fallback when template loading fails', async () => {
-        mockGuildStore(mockGuild)
-        vi.mocked(api.automod.getSettings).mockResolvedValue({
-            data: { settings: mockSettings },
-        } as any)
-        vi.mocked(api.automod.listTemplates).mockRejectedValue(
-            new Error('templates unavailable'),
-        )
-
-        renderPage()
-
-        await waitFor(() => {
-            expect(
-                screen.getByText('No templates available right now.'),
-            ).toBeInTheDocument()
         })
     })
 
@@ -548,5 +450,85 @@ describe('AutoModPage', () => {
 
         const switches = screen.getAllByRole('switch')
         expect(switches.every((s) => !s.hasAttribute('checked'))).toBe(true)
+    })
+
+    const setTemplateContext = (template: {
+        id: string
+        name: string
+        description: string
+    }) => {
+        mockGuildStore(mockGuild)
+        vi.mocked(api.automod.getSettings).mockResolvedValue({
+            data: { settings: mockSettings },
+        } as any)
+        vi.mocked(api.automod.listTemplates).mockResolvedValue({
+            data: { templates: [template] },
+        } as any)
+    }
+
+    const clickTemplateApply = async (label: string) => {
+        const user = userEvent.setup()
+        renderPage()
+        await user.click(
+            await screen.findByRole('button', {
+                name: `Apply ${label} template`,
+            }),
+        )
+    }
+
+    test('applies template and shows success toast', async () => {
+        const { toast } = await import('sonner')
+        setTemplateContext({
+            id: 'balanced',
+            name: 'Balanced',
+            description: 'Safe defaults',
+        })
+        vi.mocked(api.automod.applyTemplate).mockResolvedValue({
+            data: { settings: { ...mockSettings, linksEnabled: true } },
+        } as any)
+
+        await clickTemplateApply('Balanced')
+
+        await waitFor(() => {
+            expect(api.automod.applyTemplate).toHaveBeenCalledWith(
+                mockGuild.id,
+                'balanced',
+            )
+            expect(toast.success).toHaveBeenCalledWith(
+                'Auto-moderation template applied',
+            )
+        })
+    })
+
+    test.each([
+        {
+            name: 'shows API error message when template apply fails with ApiError',
+            template: {
+                id: 'strict',
+                name: 'Strict',
+                description: 'Strict defaults',
+            },
+            error: new ApiError(404, 'Template not found'),
+            expectedToast: 'Template not found',
+        },
+        {
+            name: 'shows generic error when template apply fails unexpectedly',
+            template: {
+                id: 'light',
+                name: 'Light',
+                description: 'Light defaults',
+            },
+            error: new Error('boom'),
+            expectedToast: 'Failed to apply template',
+        },
+    ])('$name', async ({ template, error, expectedToast }) => {
+        const { toast } = await import('sonner')
+        setTemplateContext(template)
+        vi.mocked(api.automod.applyTemplate).mockRejectedValue(error)
+        await clickTemplateApply(template.name)
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith(expectedToast)
+        })
     })
 })

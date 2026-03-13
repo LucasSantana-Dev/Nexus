@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import ServerSettingsPage from './ServerSettings'
 import { api } from '@/services/api'
+import { ApiError } from '@/services/ApiError'
 import { useGuildStore } from '@/stores/guildStore'
 
 vi.mock('@/services/api')
@@ -28,6 +29,42 @@ const defaultAccess = {
     music: 'manage',
     integrations: 'manage',
 } as const
+
+type GuildRbacResponse = Awaited<ReturnType<typeof api.guilds.getRbac>>
+type GuildRbacPayload = GuildRbacResponse['data']
+
+const managerGuild = { ...mockGuild, canManageRbac: true }
+const managerRoles: GuildRbacPayload['roles'] = [
+    {
+        id: '222222222222222222',
+        name: 'Mods',
+        color: 0,
+        position: 1,
+    },
+]
+const managerModules = Object.keys(defaultAccess) as GuildRbacPayload['modules']
+
+const makeManagerRbacPayload = (
+    overrides: Partial<GuildRbacPayload> = {},
+): GuildRbacPayload => ({
+    guildId: managerGuild.id,
+    modules: managerModules,
+    grants: [],
+    roles: managerRoles,
+    effectiveAccess: defaultAccess,
+    canManageRbac: true,
+    ...overrides,
+})
+
+const setupManagerRbac = (overrides: Partial<GuildRbacPayload> = {}) => {
+    mockGuildStoreFn(managerGuild, {
+        canManageRbac: true,
+        effectiveAccess: defaultAccess,
+    })
+    vi.mocked(api.guilds.getRbac).mockResolvedValue({
+        data: makeManagerRbacPayload(overrides),
+    } as GuildRbacResponse)
+}
 
 function mockGuildStoreFn(guild: typeof mockGuild | null, memberContext?: any) {
     vi.mocked(useGuildStore).mockReturnValue({
@@ -228,17 +265,68 @@ describe('ServerSettingsPage', () => {
         expect(warningSwitch).toBeChecked()
     })
 
-    test('uses default settings on API error', async () => {
+    test('shows actionable load error and retry when settings fetch fails', async () => {
+        const user = userEvent.setup()
         mockGuildStoreFn(mockGuild)
         vi.mocked(api.guilds.getSettings).mockRejectedValue(
-            new Error('Not found'),
+            new ApiError(502, 'Discord API unavailable'),
         )
 
         renderPage()
 
         await waitFor(() => {
-            expect(screen.getByText('Server Settings')).toBeInTheDocument()
+            expect(
+                screen.getByText('Unable to load server settings'),
+            ).toBeInTheDocument()
         })
+
+        expect(screen.getByText('Discord API unavailable')).toBeInTheDocument()
+
+        vi.mocked(api.guilds.getSettings).mockResolvedValueOnce({
+            data: { settings: mockSettings },
+        } as any)
+
+        await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+        await waitFor(() => {
+            expect(screen.getByText('General')).toBeInTheDocument()
+        })
+    })
+
+    test('shows re-authenticate action when settings fetch returns auth error', async () => {
+        mockGuildStoreFn(mockGuild)
+        vi.mocked(api.guilds.getSettings).mockRejectedValue(
+            new ApiError(401, 'Session expired'),
+        )
+
+        renderPage()
+
+        await waitFor(() => {
+            expect(
+                screen.getByText('Unable to load server settings'),
+            ).toBeInTheDocument()
+        })
+
+        expect(screen.getByText('Re-authenticate')).toBeInTheDocument()
+    })
+
+    test('shows network guidance without re-authenticate action on network failure', async () => {
+        mockGuildStoreFn(mockGuild)
+        vi.mocked(api.guilds.getSettings).mockRejectedValue(new ApiError(0, ''))
+
+        renderPage()
+
+        await waitFor(() => {
+            expect(
+                screen.getByText(
+                    'Unable to reach API. Check your connection and retry.',
+                ),
+            ).toBeInTheDocument()
+        })
+
+        expect(
+            screen.queryByRole('link', { name: 'Re-authenticate' }),
+        ).not.toBeInTheDocument()
     })
 
     test('shows RBAC manager message when user cannot manage policy', async () => {
@@ -334,7 +422,7 @@ describe('ServerSettingsPage', () => {
 
         await waitFor(() => {
             expect(toast.error).toHaveBeenCalledWith(
-                'Failed to load access control policy',
+                'Failed to load role options for access rules.',
             )
         })
     })
@@ -421,38 +509,20 @@ describe('ServerSettingsPage', () => {
         })
     })
 
-    test('applies Criativaria baseline when manager triggers action', async () => {
+    test('applies Criativaria baseline and shows success toast', async () => {
         const user = userEvent.setup()
         const { toast } = await import('sonner')
-        const managerGuild = { ...mockGuild, canManageRbac: true }
-
-        mockGuildStoreFn(managerGuild, {
-            canManageRbac: true,
-            effectiveAccess: defaultAccess,
-        })
+        setupManagerRbac()
         vi.mocked(api.guilds.applyCriativariaPreset).mockResolvedValue({
-            data: {
-                run: {
-                    status: 'completed',
-                },
-            },
+            data: { run: { status: 'completed' } },
         } as any)
 
         renderPage()
 
-        await waitFor(() => {
-            expect(
-                screen.getByRole('button', {
-                    name: /Apply Criativaria Baseline/i,
-                }),
-            ).toBeInTheDocument()
+        const applyButton = await screen.findByRole('button', {
+            name: /Apply Criativaria Baseline/i,
         })
-
-        await user.click(
-            screen.getByRole('button', {
-                name: /Apply Criativaria Baseline/i,
-            }),
-        )
+        await user.click(applyButton)
 
         await waitFor(() => {
             expect(api.guilds.applyCriativariaPreset).toHaveBeenCalledWith(
@@ -464,71 +534,53 @@ describe('ServerSettingsPage', () => {
         })
     })
 
-    test('shows error toast when Criativaria baseline apply fails', async () => {
+    test.each([
+        {
+            name: 'shows ApiError message when Criativaria baseline apply fails',
+            error: new ApiError(500, 'Preset failed'),
+            expectedToast: 'Preset failed',
+        },
+        {
+            name: 'shows generic message when Criativaria baseline apply fails unexpectedly',
+            error: new Error('Unexpected failure'),
+            expectedToast: 'Failed to apply Criativaria baseline',
+        },
+    ])('$name', async ({ error, expectedToast }) => {
         const user = userEvent.setup()
         const { toast } = await import('sonner')
-        const managerGuild = { ...mockGuild, canManageRbac: true }
-
-        mockGuildStoreFn(managerGuild, {
-            canManageRbac: true,
-            effectiveAccess: defaultAccess,
-        })
-        vi.mocked(api.guilds.applyCriativariaPreset).mockRejectedValue(
-            new Error('preset failed'),
-        )
+        setupManagerRbac()
+        vi.mocked(api.guilds.applyCriativariaPreset).mockRejectedValue(error)
 
         renderPage()
 
-        await waitFor(() => {
-            expect(
-                screen.getByRole('button', {
-                    name: /Apply Criativaria Baseline/i,
-                }),
-            ).toBeInTheDocument()
+        const applyButton = await screen.findByRole('button', {
+            name: /Apply Criativaria Baseline/i,
         })
-
-        await user.click(
-            screen.getByRole('button', {
-                name: /Apply Criativaria Baseline/i,
-            }),
-        )
+        await user.click(applyButton)
 
         await waitFor(() => {
-            expect(toast.error).toHaveBeenCalledWith(
-                'Failed to apply Criativaria baseline',
-            )
+            expect(toast.error).toHaveBeenCalledWith(expectedToast)
         })
     })
 
-    test('retries RBAC role loading from warning card action', async () => {
+    test('retries RBAC role loading from warning card', async () => {
         const user = userEvent.setup()
-        const managerGuild = { ...mockGuild, canManageRbac: true }
-
+        vi.mocked(api.guilds.getRbac)
+            .mockRejectedValueOnce(new Error('initial network'))
+            .mockResolvedValueOnce({
+                data: makeManagerRbacPayload(),
+            } as GuildRbacResponse)
         mockGuildStoreFn(managerGuild, {
             canManageRbac: true,
             effectiveAccess: defaultAccess,
         })
 
-        vi.mocked(api.guilds.getRbac)
-            .mockRejectedValueOnce(new Error('network'))
-            .mockResolvedValue({
-                data: {
-                    guildId: managerGuild.id,
-                    modules: Object.keys(defaultAccess),
-                    grants: [],
-                    roles: [{ id: '222222222222222222', name: 'Mods' }],
-                    effectiveAccess: defaultAccess,
-                    canManageRbac: true,
-                },
-            } as any)
-
         renderPage()
 
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: /Retry Roles/i })).toBeInTheDocument()
+        const retryButton = await screen.findByRole('button', {
+            name: /Retry Roles/i,
         })
-
-        await user.click(screen.getByRole('button', { name: /Retry Roles/i }))
+        await user.click(retryButton)
 
         await waitFor(() => {
             expect(api.guilds.getRbac).toHaveBeenCalledTimes(2)

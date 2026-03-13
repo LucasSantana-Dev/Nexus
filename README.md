@@ -110,25 +110,43 @@ packages/
 - `/servers` remains available to authenticated users even when module-level
   access is restricted, so server discovery/invite flows stay reachable
 - Sidebar identity resolution chain: `nick > globalName > username`
+- Sidebar server selector preserves stale guild context during transient API
+  failures and keeps Retry/Re-auth controls available in the dropdown
 - Dashboard guild metrics now use live bot/API counts, rendering unknown values
   as `—` instead of `0`
 - Moderation case viewer and settings
 - Auto-mod configuration
+- Auto-mod templates API with curated presets (`balanced`, `strict`, `light`)
 - Server logs with filtering
 - Music player with real-time SSE updates
 - Feature toggle management (Unleash + env var fallback)
+- Auth status payload now includes `user.isDeveloper`, so frontend bootstrap no
+  longer probes developer-only global toggle endpoints for standard users
+- Server settings are loaded on-demand in `/settings` with explicit retry and
+  re-auth guidance when auth/upstream failures occur
+- Features page now surfaces auth/forbidden/network/upstream load failures with
+  explicit retry/re-auth actions instead of silent fallback
 - Dashboard API contract uses canonical
   `/api/guilds/:guildId/automessages`; legacy
   `/api/guilds/:guildId/auto-messages` is intentionally unsupported, and stale
   guild `/listing` calls were removed from the frontend client/store surface
+- Twitch notifications now accept Twitch URL or login input and resolve Discord
+  channel names in notification rows
 
 ### Backend Quality
 - Zod input validation on all routes
 - Rate limiting (API 100/min, auth 20/15min, write 30/min)
 - Centralized error handling (AppError + asyncHandler + errorHandler)
 - Request logging middleware
+- RBAC storage outages now return explicit `503` API responses when
+  `guild_role_grants` is unavailable
+- Guild access fallback cache is backed by Redis keys (short TTL) so Discord
+  `429/5xx` fallback works across multi-instance backend replicas
 - Auth readiness health contract at `GET /api/health/auth-config`
   (includes `clientId` and generated `authorizeUrlPreview`, without secrets)
+- Deploy OAuth redirect smoke checks derive expected `client_id` and
+  `redirect_uri` from `GET /api/health/auth-config` to avoid hardcoded-domain
+  drift failures
 - Guild automation execution locking is Redis-backed and fail-closed when lock
   infrastructure is unavailable
 - 421 tests (361 backend + 60 frontend), 96% statement coverage
@@ -147,8 +165,13 @@ cd Lucky
 cp .env.example .env    # Configure DISCORD_TOKEN, CLIENT_ID, DATABASE_URL
 npm install
 npm run build
+npm run db:migrate   # Required before start; startup preflight checks guild_role_grants
 npm start
 ```
+
+If `npm run db:migrate` is skipped, backend startup preflight fails on missing
+`guild_role_grants`, and RBAC endpoints return explicit `503` errors until the
+schema is migrated.
 
 ### Docker (Recommended)
 
@@ -207,6 +230,8 @@ verification in CI or local checks.
 Sonar main-gate reliability checks are strict on new code: use deterministic
 string sorting (`localeCompare`), keyboard-accessible UI interactions for
 clickable controls, and bounded parsing logic for user-facing text handling.
+Bundle-size PR checks export `YOUTUBE_DL_SKIP_DOWNLOAD=true` to keep
+`youtube-dl-exec` postinstall deterministic under GitHub API rate limits.
 
 ### Remote Deploy (No SSH)
 
@@ -226,7 +251,7 @@ Deploy workflow smoke checks now require `GET /api/health/auth-config` to return
 `status=ok` with no warnings (including healthy Redis/auth-session flags).
 Deploy workflow now also validates the `/api/auth/discord` redirect contract:
 `302` to Discord authorize URL with expected `client_id` and same-origin
-`redirect_uri=https://lucky-api.lucassantana.tech/api/auth/callback`.
+`redirect_uri=https://lucky.lucassantana.tech/api/auth/callback`.
 Both deploy smoke checks now retry during rollout until the new backend
 containers are serving the expected contract.
 Deploy webhook rollout now starts `postgres`/`redis`, runs
@@ -256,6 +281,8 @@ visit to `/servers` first.
 Guild auto-selection prioritizes the first server where Lucky is already added;
 if none are bot-added, the dashboard keeps no selected server and shows a clear
 selection/empty guidance state.
+Guild selection now loads only member-context bootstrap data and no longer
+triggers eager guild detail/listing fetches during route navigation.
 Server selector empty/error states are split:
 - `No accessible servers found` means authentication worked but no authorized
   guilds matched your access policy.
@@ -273,7 +300,7 @@ When `WEBAPP_FRONTEND_URL` includes multiple origins, use comma-separated values
 accepts all configured entries while Last.fm redirects use the first origin.
 Set `WEBAPP_REDIRECT_URI` to the exact Discord OAuth callback URL registered in the
 Discord Developer Portal (example:
-`https://lucky-api.lucassantana.tech/api/auth/callback`).
+`https://lucky.lucassantana.tech/api/auth/callback`).
 Set `WEBAPP_EXPECTED_CLIENT_ID` from deployment secrets (for example GitHub
 Actions secret `WEBAPP_EXPECTED_CLIENT_ID`) to make
 `/api/health/auth-config` return `degraded` on credential drift. When unset,
@@ -283,9 +310,8 @@ For `docker-compose.yml` and `docker-compose.dev.yml`,
 Set `WEBAPP_BACKEND_URL` to your public backend/API origin when you expose API routes
 through a dedicated host. Use an absolute URL (for example,
 `https://lucky-api.lucassantana.tech`).
-In production, OAuth callback generation now prioritizes `WEBAPP_BACKEND_URL`
-(`.../api/auth/callback`) and falls back to `WEBAPP_REDIRECT_URI` when backend
-URL is not set.
+OAuth callback generation now uses `WEBAPP_REDIRECT_URI` as canonical callback
+source and only falls back to request-derived callback URLs when it is unset.
 Bot `/lastfm link` URLs prioritize `WEBAPP_BACKEND_URL` and fall back to the
 origin of `WEBAPP_REDIRECT_URI` when backend URL is not set. Legacy
 `nexus.lucassantana.tech` origins and non-HTTP(S) origins are rejected for
@@ -320,9 +346,9 @@ See `.env.example` for all available options. Key variables:
 | `REDIS_HOST` | No | Redis host (default: localhost) |
 | `WEBAPP_ENABLED` | No | Enable web dashboard (default: false) |
 | `WEBAPP_SESSION_SECRET` | No | Session encryption key |
-| `WEBAPP_REDIRECT_URI` | No | Explicit Discord OAuth callback URL (must match Discord app settings); fallback callback source when `WEBAPP_BACKEND_URL` is unset |
-| `WEBAPP_EXPECTED_CLIENT_ID` | No | Expected Discord app client id for `/api/health/auth-config` mismatch detection when explicitly set |
-| `WEBAPP_BACKEND_URL` | No | Public backend/API origin used as canonical host for backend links and bot Last.fm connect links (must be an absolute HTTP(S) URL; production canonical: `https://lucky-api.lucassantana.tech`) |
+| `WEBAPP_REDIRECT_URI` | No | Explicit Discord OAuth callback URL (must match Discord app settings and deploy smoke contract) |
+| `WEBAPP_EXPECTED_CLIENT_ID` | No | Expected Discord app client id for `/api/health/auth-config` mismatch detection when explicitly set (recommended via deployment secret) |
+| `WEBAPP_BACKEND_URL` | No | Public backend/API origin used for backend links and bot Last.fm connect links (must be an absolute HTTP(S) URL; recommended: `https://lucky-api.lucassantana.tech`) |
 | `CLIENT_SECRET` | No | Discord OAuth secret (for dashboard) |
 | `SENTRY_DSN` | No | Error tracking |
 
@@ -391,8 +417,6 @@ Lucky now supports declarative server automation for guild operations:
 - Safe auto-apply for non-destructive changes
 - Protected operations (deletes/permission tightening) require explicit opt-in
 - Native Discord onboarding mapping (`fetchOnboarding`/`editOnboarding`) is first-class
-- Companion management APIs cover channel options, automod templates, and the
-  Criativaria preset bootstrap under `/api/guilds/:guildId/*`
 - Cutover role cleanup targets only external bots explicitly flagged with
   `retireOnCutover: true` in parity manifest data
 - Automation API precondition failures (`no manifest`, `capture required`,

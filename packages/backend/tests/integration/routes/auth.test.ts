@@ -196,7 +196,7 @@ describe('Auth Routes Integration', () => {
             }
         })
 
-        test('should enforce backend callback and secure cookie in production', async () => {
+        test('should keep configured callback and secure cookie in production', async () => {
             const originalNodeEnv = process.env.NODE_ENV
             const originalRedirectUri = process.env.WEBAPP_REDIRECT_URI
             const originalBackendUrl = process.env.WEBAPP_BACKEND_URL
@@ -220,7 +220,7 @@ describe('Auth Routes Integration', () => {
 
             expect(response.headers.location).toContain(
                 encodeURIComponent(
-                    'https://lucky-api.lucassantana.tech/api/auth/callback',
+                    'https://lucky.lucassantana.tech/api/auth/callback',
                 ),
             )
 
@@ -405,6 +405,31 @@ describe('Auth Routes Integration', () => {
                     username: MOCK_SESSION_DATA.user.username,
                     discriminator: MOCK_SESSION_DATA.user.discriminator,
                     avatar: MOCK_SESSION_DATA.user.avatar,
+                    isDeveloper: false,
+                },
+            })
+        })
+
+        test('should flag authenticated developer users', async () => {
+            const mockSessionService = getSessionServiceMock()
+            mockSessionService.getSession.mockResolvedValue({
+                ...MOCK_SESSION_DATA,
+                user: {
+                    ...MOCK_SESSION_DATA.user,
+                    id: '123456789',
+                },
+            })
+
+            const response = await request(app)
+                .get('/api/auth/status')
+                .set('Cookie', ['sessionId=valid_session_id'])
+                .expect(200)
+
+            expect(response.body).toMatchObject({
+                authenticated: true,
+                user: {
+                    id: '123456789',
+                    isDeveloper: true,
                 },
             })
         })
