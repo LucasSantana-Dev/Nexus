@@ -13,14 +13,11 @@
         "outDir": "./dist",
         "baseUrl": ".",
         "paths": {
-            "@/*": ["./src/*"]
+            "@/*": ["./src/*"],
+            "@lucky/shared": ["../shared/dist/index.d.ts"],
+            "@lucky/shared/*": ["../shared/dist/*"]
         }
     },
     "include": ["src/**/*"],
-    "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],
-    "references": [
-        {
-            "path": "../shared"
-        }
-    ]
+    "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"]
 }
