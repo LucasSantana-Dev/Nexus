@@ -451,7 +451,7 @@ Lucky now supports declarative server automation for guild operations:
 
 1. Fork and create a feature branch
 2. Follow conventional commits (`feat:`, `fix:`, `refactor:`, etc.)
-3. Run `npm run lint && npm run type:check && npm run test` before PR
+3. Run `npm run verify` before PR (`npm run test:e2e` stays separate for browser smoke)
 4. Keep functions <50 lines, files <250 lines
 
 ## License

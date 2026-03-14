@@ -28,7 +28,7 @@
         "test:ci": "npm run test --workspace=packages/backend -- --ci",
         "test:coverage": "npm run test --workspace=packages/backend -- --coverage",
         "test:e2e": "npm run test:e2e --workspace=packages/frontend",
-        "verify": "npm run db:generate && npm run lint --workspace=packages/frontend && npm run lint --workspace=packages/backend && npm run build:shared && npm run verify:shared-exports && npm run type:check && npm run build && npm run test:all && npm run audit:high",
+        "verify": "npm run lint --workspace=packages/frontend && npm run lint --workspace=packages/backend && npm run build:shared && npm run verify:shared-exports && npm run type:check && npm run build && npm run test:all && npm run audit:high",
         "audit:critical": "npm audit --audit-level=critical",
         "audit:high": "npm audit --audit-level=high",
         "lint:secrets": "secretlint \"**/*\"",
