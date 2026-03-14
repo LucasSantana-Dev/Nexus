@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.15] - 2026-03-14
+
 ### Added
 
 - Added project CI triage skill
@@ -17,19 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for `Transport closed` auth/transport remediation workflows.
 - Expanded CI triage skill with deterministic required-vs-informational status
   classification and explicit ruleset-mismatch handling.
+- Added repo-local OpenCode guardrail plugins, verification/install helper
+  scripts, and the `opencode-lucky-workflows` project skill for Lucky Codex
+  sessions on local and `server-do-luk`.
+- Enhanced `/music health` diagnostics output for operator triage with resolver
+  source/cache visibility, repeat-mode labels, watchdog recovery timestamps,
+  and actionable recovery steps.
+
+### Fixed
+
 - Hardened GitHub MCP recovery runbook with protocol-compatibility detection
   (framed vs line-delimited stdio), wrapper-based runtime auth alignment for
   Codex, and local MCP config integrity checks for related server entries
   (`filesystem`, `fetch`, `playwright`).
-
-### Added
-
-- Added repo-local OpenCode guardrail plugins, verification/install helper
-  scripts, and the `opencode-lucky-workflows` project skill for Lucky Codex
-  sessions on local and `server-do-luk`.
-
-### Fixed
-
 - Bot music stability hotfix: `/autoplay` now acknowledges interactions before
   queue replenishment work, preventing Discord command timeout responses.
 - Added fail-safe Discord Player error/debug handling (`player.events.on` and
