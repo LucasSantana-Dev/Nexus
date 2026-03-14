@@ -81,6 +81,8 @@ packages/
 - Autoplay command recovers active guild queue from player cache fallback to avoid false queue-missing errors during active playback
 - Autoplay toggles now respond immediately while queue replenishment runs in the background, reducing interaction timeout risk
 - Player error/debug handlers are guarded and emit structured diagnostics for safer runtime recovery
+- Queue-miss replies now include restart-aware recovery guidance so users can
+  resume playback with `/play` after a bot restart
 - Now-playing card updates in place to avoid channel spam on track changes
 - Video/audio downloads with format selection and progress tracking
 - Moderation: warn, mute, kick, ban with case tracking
