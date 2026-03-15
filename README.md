@@ -332,16 +332,15 @@ non-blocking success path when secrets are unavailable.
 The Sonar workflow uses `SonarSource/sonarqube-scan-action@v7`.
 For CI triage on Lucky, use the project skill:
 `.cursor/skills/lucky-ci-gate-recovery/SKILL.md`.
-For deploy lock/checkout/runtime incident recovery, use:
-`.cursor/skills/lucky-deploy-recovery/SKILL.md`.
 For GitHub MCP transport/auth failures (`Transport closed`), use:
 `.cursor/skills/mcp-github-recovery/SKILL.md` before switching to `gh` fallback.
-That runbook now aligns Codex with the wrapper-based `gh auth token` runtime
-model already used by OpenCode, plus protocol-compat checks (framed vs
-line-delimited stdio) and MCP config integrity checks for related local server
-entries.
+That runbook now replaces the deprecated `@modelcontextprotocol/server-github`
+runtime with the official `github-mcp-server` binary and aligns Codex,
+OpenCode, and Cursor wrappers around `gh auth token` with env fallback.
 Bundle-size PR checks export `YOUTUBE_DL_SKIP_DOWNLOAD=true` to keep
 `youtube-dl-exec` postinstall deterministic under GitHub API rate limits.
+For deploy lock/checkout/runtime incident recovery, use:
+`.cursor/skills/lucky-deploy-recovery/SKILL.md`.
 
 ### Remote Deploy (No SSH)
 
@@ -357,10 +356,6 @@ compose working directory, so runs from `/repo` target the existing homelab stac
 The webhook container now executes deploy commands from
 `/home/luk-server/Lucky` to match the live compose stack metadata.
 Interrupted deploys now auto-recover stale lock directories on the next run.
-Deploy checkout sync now enforces archive+reset hygiene before rollout:
-- archive tracked/staged/untracked drift to timestamped artifacts
-- stash local drift for operator recovery evidence
-- fetch/reset/clean to `origin/main` and assert a clean tree before continuing
 Deploy workflow smoke checks now require `GET /api/health/auth-config` to return
 `status=ok` with no warnings (including healthy Redis/auth-session flags).
 Deploy workflow now also validates the `/api/auth/discord` redirect contract:
@@ -501,9 +496,9 @@ Set `UNLEASH_URL` and `UNLEASH_API_TOKEN` for Unleash, or use `FEATURE_DOWNLOAD_
 ### Music
 `/play` `/pause` `/resume` `/skip` `/stop` `/queue` `/volume` `/seek` `/lyrics` `/shuffle` `/repeat` `/clear` `/remove` `/move` `/jump` `/history` `/songinfo` `/autoplay` `/music health`
 
-`/music health` provides operator diagnostics for queue state, resolver source/cache
-signals, provider cooldown/score status, watchdog recovery state, snapshot
-availability, and actionable recovery next steps.
+`/music health` provides operator diagnostics for queue state, resolver
+source/cache signals, provider cooldown/score status, watchdog recovery state
+and detail, snapshot availability, and actionable recovery next steps.
 
 ### Download
 `/download` `/download-audio` `/download-video`
